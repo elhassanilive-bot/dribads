@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { getPopularHelpSuggestions } from '@/content/helpCenterData';
 
 export default function FaqAccordion({ sections }) {
   const [search, setSearch] = useState('');
@@ -18,7 +17,7 @@ export default function FaqAccordion({ sections }) {
   const filteredSections = useMemo(() => filterSections(sections, search), [search, sections]);
   const totalMatches = filteredSections.reduce((sum, section) => sum + section.items.length, 0);
   const suggestedTerms = useMemo(() => buildSuggestions(searchIndex.terms, search), [searchIndex.terms, search]);
-  const popularTerms = useMemo(() => getPopularHelpSuggestions(), []);
+  const popularTerms = useMemo(() => buildPopularSuggestions(sections), [sections]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -193,6 +192,17 @@ function buildSuggestions(list, query) {
   return list
     .filter((term) => term.toLowerCase().includes(lower))
     .sort((a, b) => a.length - b.length);
+}
+
+function buildPopularSuggestions(sections) {
+  const popular = [];
+  sections.forEach((section) => {
+    if (section.title) popular.push(section.title);
+    section.items.slice(0, 2).forEach((item) => {
+      if (item.question) popular.push(item.question.split(' ').slice(0, 3).join(' '));
+    });
+  });
+  return Array.from(new Set(popular)).filter(Boolean).slice(0, 12);
 }
 
 function renderIcon(name) {
