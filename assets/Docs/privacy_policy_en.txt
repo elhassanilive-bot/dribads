@@ -1,0 +1,52 @@
+Dribdo Privacy Policy
+
+Effective date: March 3, 2026
+
+This Privacy Policy explains how Dribdo collects, uses, stores, and protects your information when you use the app and related services.
+
+1) Information we collect
+- Account data: name, username, email, phone (if provided), profile photo, bio.
+- Content data: posts, stories, comments, reactions, messages, media metadata.
+- Device and usage data: device type, app version, language, basic diagnostics, IP-derived region, activity logs.
+- Safety data: reports, moderation decisions, blocked users, abuse signals.
+
+2) How we use information
+- Provide core features: feed, chat, groups, channels, stories, notifications.
+- Improve relevance: ranking, recommendations, and anti-spam quality controls.
+- Security and integrity: detect fraud, abuse, impersonation, and policy violations.
+- Communication: service alerts, account notices, support responses.
+- Legal compliance: enforce Terms, DMCA, and applicable laws.
+
+3) Sharing of information
+- We do not sell personal data.
+- We may share data with infrastructure providers (hosting, analytics, storage) under contractual safeguards.
+- We may disclose data when required by law or to protect users and platform safety.
+- Public content is visible according to your privacy settings and audience choices.
+
+4) Data retention
+- We retain account and content data while your account is active.
+- Some logs and safety records may be retained for a limited period for security and legal reasons.
+- If you request deletion, we process it according to account deletion rules and legal obligations.
+
+5) Your controls
+- Edit profile and privacy options in Settings.
+- Control who can message, tag, mention, and interact with your content.
+- Manage blocked users, watch history, saved items, and notification preferences.
+- Request account/data deletion from Support.
+
+6) Security
+- We apply technical and organizational safeguards to protect data.
+- No system is 100% secure; users should use strong passwords and protect account credentials.
+
+7) Children
+- Dribdo is not intended for children who are below the minimum legal age in their jurisdiction.
+
+8) International processing
+- Data may be processed in different regions where our service providers operate, with safeguards where required.
+
+9) Policy updates
+- We may update this policy from time to time. Material changes will be communicated in-app when appropriate.
+
+10) Contact
+- Email: support@dribdo.com
+- Phone: +000000000000

@@ -1,0 +1,23 @@
+About Dribdo
+
+Dribdo is a social platform for sharing posts, stories, groups, channels, short videos, and direct messages.
+
+Our mission
+- Help people share useful content in a respectful, safe community.
+- Give creators and communities tools to publish, discuss, and grow.
+
+What the platform includes
+- Home feed with posts, photos, and videos.
+- Groups for topic communities.
+- Channels for creators and organizations.
+- Stories, chat, and notifications.
+- Privacy and safety controls in Settings.
+
+Safety and trust
+- We invest in anti-abuse tools, reporting workflows, moderation policies, and account controls.
+- We enforce rules against impersonation, harassment, and copyright abuse.
+
+Support
+- Contact support@dribdo.com for technical help, abuse reports, or account/data requests.
+
+Thank you for being part of Dribdo.
