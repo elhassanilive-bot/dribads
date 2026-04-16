@@ -46,13 +46,18 @@ export default function AdminHome() {
             </div>
 
             <div className="rounded-3xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-10">
-              <h2 className="text-3xl font-bold text-gray-900 dark:text-white">إعدادات</h2>
+              <h2 className="text-3xl font-bold text-gray-900 dark:text-white">إدارة KYC</h2>
               <p className="mt-3 text-gray-700 dark:text-gray-300 leading-relaxed">
-                هذا المكان مخصص لاحقًا لإعدادات الموقع (روابط السوشيال، البريد، SEO…).
+                مراجعة ملفات الناشرين وتحديث حالة التحقق (قيد الانتظار، قيد المراجعة، موثّق، مرفوض).
               </p>
-              <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">
-                حاليًا الإعدادات موجودة في <code>.env.local</code> و <code>src/config/site.js</code>.
-              </p>
+              <div className="mt-8 flex gap-4">
+                <Link
+                  href="/admin/kyc"
+                  className="inline-flex items-center justify-center bg-blue-700 hover:bg-blue-800 text-white px-8 py-3 rounded-lg font-semibold transition-colors"
+                >
+                  فتح إدارة KYC
+                </Link>
+              </div>
             </div>
           </div>
         </div>

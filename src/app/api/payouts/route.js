@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { createPayoutRequest, getPayoutsData } from "@/lib/dribads/repository";
+import { corsJson, corsOptionsResponse } from "@/lib/dribads/cors";
 
 function mapPayoutError(error) {
   const code = error instanceof Error ? error.message : String(error || "");
@@ -16,15 +16,24 @@ function mapPayoutError(error) {
   return { status: 500, error: "Failed to process payout request" };
 }
 
+export async function OPTIONS() {
+  return corsOptionsResponse();
+}
+
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const appSlug = searchParams.get("app") || null;
-    const data = await getPayoutsData({ appSlug });
-    return NextResponse.json(data);
+    const appSlug = searchParams.get("app") || searchParams.get("app_slug") || null;
+    const appKey =
+      request.headers.get("x-dribads-app-key") ||
+      searchParams.get("app_key") ||
+      searchParams.get("appKey") ||
+      "";
+    const data = await getPayoutsData({ appSlug, appKey });
+    return corsJson(data);
   } catch (error) {
     console.error("GET /api/payouts error", error);
-    return NextResponse.json({ error: "Failed to load payouts" }, { status: 500 });
+    return corsJson({ error: "Failed to load payouts" }, { status: 500 });
   }
 }
 
@@ -37,10 +46,10 @@ export async function POST(request) {
     const note = body?.note || "";
 
     const data = await createPayoutRequest({ appSlug, appKey, amount, note });
-    return NextResponse.json(data, { status: 201 });
+    return corsJson(data, { status: 201 });
   } catch (error) {
     console.error("POST /api/payouts error", error);
     const mapped = mapPayoutError(error);
-    return NextResponse.json({ error: mapped.error }, { status: mapped.status });
+    return corsJson({ error: mapped.error }, { status: mapped.status });
   }
 }

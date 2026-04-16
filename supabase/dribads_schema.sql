@@ -89,6 +89,16 @@ create table if not exists dribads.publisher_profiles (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists dribads.kyc_audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  profile_user_id uuid not null references dribads.publisher_profiles(user_id) on delete cascade,
+  previous_status text not null check (previous_status in ('pending', 'in_review', 'verified', 'rejected')),
+  new_status text not null check (new_status in ('pending', 'in_review', 'verified', 'rejected')),
+  reason text not null default '',
+  actor_label text not null default 'admin',
+  created_at timestamptz not null default now()
+);
+
 grant select on table dribads.apps to anon, authenticated, service_role;
 grant insert, update on table dribads.apps to service_role;
 grant select on table dribads.ads to anon, authenticated, service_role;
@@ -105,6 +115,7 @@ grant select on table dribads.payout_requests to authenticated, service_role;
 grant insert on table dribads.payout_requests to authenticated, service_role;
 grant update on table dribads.payout_requests to service_role;
 grant select, insert, update on table dribads.publisher_profiles to authenticated, service_role;
+grant select, insert on table dribads.kyc_audit_logs to service_role;
 
 create index if not exists idx_dribads_ad_views_ad_id on dribads.ad_views(ad_id);
 create index if not exists idx_dribads_ad_clicks_ad_id on dribads.ad_clicks(ad_id);
@@ -115,6 +126,8 @@ create index if not exists idx_dribads_apps_slug on dribads.apps(slug);
 create index if not exists idx_dribads_payout_requests_app_id on dribads.payout_requests(app_id);
 create index if not exists idx_dribads_payout_requests_requested_at on dribads.payout_requests(requested_at desc);
 create index if not exists idx_dribads_publisher_profiles_kyc on dribads.publisher_profiles(kyc_status);
+create index if not exists idx_dribads_kyc_audit_profile_user_id on dribads.kyc_audit_logs(profile_user_id);
+create index if not exists idx_dribads_kyc_audit_created_at on dribads.kyc_audit_logs(created_at desc);
 
 alter table dribads.apps enable row level security;
 alter table dribads.ads enable row level security;
@@ -123,6 +136,7 @@ alter table dribads.ad_clicks enable row level security;
 alter table dribads.app_monetization_features enable row level security;
 alter table dribads.payout_requests enable row level security;
 alter table dribads.publisher_profiles enable row level security;
+alter table dribads.kyc_audit_logs enable row level security;
 
 drop policy if exists dribads_apps_select on dribads.apps;
 create policy dribads_apps_select on dribads.apps
@@ -224,6 +238,18 @@ create policy dribads_publisher_profiles_update_own on dribads.publisher_profile
   to authenticated, service_role
   using (auth.uid() = user_id or auth.role() = 'service_role')
   with check (auth.uid() = user_id or auth.role() = 'service_role');
+
+drop policy if exists dribads_kyc_audit_service_select on dribads.kyc_audit_logs;
+create policy dribads_kyc_audit_service_select on dribads.kyc_audit_logs
+  for select
+  to service_role
+  using (true);
+
+drop policy if exists dribads_kyc_audit_service_insert on dribads.kyc_audit_logs;
+create policy dribads_kyc_audit_service_insert on dribads.kyc_audit_logs
+  for insert
+  to service_role
+  with check (true);
 
 insert into dribads.apps (slug, name, api_key, is_active)
 values

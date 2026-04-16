@@ -1,0 +1,59 @@
+
+> dribdoweb@0.1.0 dev
+> next dev --webpack
+
+▲ Next.js 16.1.6 (webpack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.190.130:3000
+- Environments: .env.local
+
+✓ Starting...
+✓ Ready in 8.2s
+○ Compiling /analytics ...
+ GET / 200 in 3.1s (compile: 2.6s, render: 479ms)
+ GET /api/ads 200 in 3.2s (compile: 1451ms, render: 1712ms)
+ POST /api/ad-view 200 in 2.6s (compile: 817ms, render: 1744ms)
+ GET /dashboard 200 in 19.7s (compile: 1219ms, render: 18.5s)
+ GET /analytics 200 in 15.0s (compile: 29ms, render: 15.0s)
+ GET /analytics 200 in 767ms (compile: 359ms, render: 408ms)
+ GET /analytics 200 in 220ms (compile: 16ms, render: 205ms)
+ GET /analytics 200 in 246ms (compile: 10ms, render: 236ms)
+ GET /analytics 200 in 260ms (compile: 14ms, render: 245ms)
+ GET /analytics 200 in 289ms (compile: 24ms, render: 265ms)
+ GET /analytics 200 in 812ms (compile: 22ms, render: 790ms)
+ GET /analytics 200 in 239ms (compile: 19ms, render: 220ms)
+ GET /analytics 200 in 307ms (compile: 17ms, render: 290ms)
+ GET /analytics 200 in 445ms (compile: 145ms, render: 300ms)
+ GET /api/diagnostics 200 in 3.9s (compile: 2.4s, render: 1487ms)
+ GET /api/ads 200 in 4.6s (compile: 2.4s, render: 2.2s)
+ GET /api/diagnostics 200 in 644ms (compile: 7ms, render: 637ms)
+ GET /analytics 200 in 387ms (compile: 97ms, render: 290ms)
+ POST /api/ad-view 200 in 3.2s (compile: 919ms, render: 2.3s)
+ GET /api/analytics?app=dribdo&days=7 200 in 2.9s (compile: 1097ms, render: 1776ms)
+ GET /analytics 200 in 657ms (compile: 150ms, render: 507ms)
+ GET /analytics 200 in 661ms (compile: 258ms, render: 403ms)
+ GET /analytics 200 in 934ms (compile: 425ms, render: 508ms)
+ GET /analytics 200 in 916ms (compile: 225ms, render: 692ms)
+ GET /analytics 200 in 792ms (compile: 175ms, render: 617ms)
+ GET /analytics 200 in 1177ms (compile: 558ms, render: 619ms)
+ GET /analytics 200 in 625ms (compile: 183ms, render: 443ms)
+ GET /analytics 200 in 949ms (compile: 334ms, render: 615ms)
+ GET /analytics 200 in 600ms (compile: 170ms, render: 431ms)
+ GET /analytics 200 in 949ms (compile: 222ms, render: 727ms)
+ GET /analytics 200 in 475ms (compile: 105ms, render: 369ms)
+ GET /analytics 200 in 838ms (compile: 204ms, render: 635ms)
+ GET /analytics 200 in 530ms (compile: 101ms, render: 428ms)
+ GET /analytics 200 in 826ms (compile: 191ms, render: 635ms)
+ GET /analytics 200 in 567ms (compile: 110ms, render: 457ms)
+ GET /analytics 200 in 900ms (compile: 252ms, render: 647ms)
+ GET /analytics 200 in 767ms (compile: 165ms, render: 603ms)
+ GET /analytics 200 in 945ms (compile: 205ms, render: 740ms)
+ GET /analytics 200 in 527ms (compile: 121ms, render: 405ms)
+ GET /analytics 200 in 802ms (compile: 201ms, render: 601ms)
+ GET /analytics 200 in 419ms (compile: 100ms, render: 318ms)
+ GET /analytics 200 in 835ms (compile: 227ms, render: 608ms)
+ GET /analytics 200 in 443ms (compile: 94ms, render: 349ms)
+ GET /analytics 200 in 825ms (compile: 255ms, render: 571ms)
+ GET /analytics 200 in 449ms (compile: 98ms, render: 351ms)
+ OPTIONS /api/ads 204 in 1676ms (compile: 1637ms, render: 39ms)
+ GET /analytics 200 in 501ms (compile: 133ms, render: 368ms)

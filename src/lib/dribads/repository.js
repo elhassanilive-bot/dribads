@@ -130,7 +130,7 @@ async function getSchemaClient() {
   return supabase.schema(DRIBADS_SCHEMA);
 }
 
-async function resolveAppContext({ appSlug, appKey } = {}) {
+async function resolveAppContext({ appSlug, appKey, requireValidAppKey = false } = {}) {
   await ensureDribadsSetup();
   const db = await getSchemaClient();
   const normalizedSlug = normalizeAppSlug(appSlug);
@@ -145,8 +145,32 @@ async function resolveAppContext({ appSlug, appKey } = {}) {
         .eq("is_active", true)
         .maybeSingle();
       if (error) throw error;
-      if (!data) throw new Error("INVALID_APP_KEY");
+      if (!data) {
+        if (normalizedSlug && !requireValidAppKey) {
+          // Fallback to slug when app key is stale/missing on client integrations.
+          // This keeps ad delivery and tracking working for app-specific analytics.
+          const { data: slugData, error: slugError } = await db
+            .from("apps")
+            .select("id, slug, name, api_key, is_active")
+            .eq("slug", normalizedSlug)
+            .eq("is_active", true)
+            .maybeSingle();
+          if (slugError) throw slugError;
+          if (slugData) return slugData;
+        }
+        throw new Error("INVALID_APP_KEY");
+      }
       if (normalizedSlug && data.slug !== normalizedSlug) {
+        if (!requireValidAppKey) {
+          const { data: slugData, error: slugError } = await db
+            .from("apps")
+            .select("id, slug, name, api_key, is_active")
+            .eq("slug", normalizedSlug)
+            .eq("is_active", true)
+            .maybeSingle();
+          if (slugError) throw slugError;
+          if (slugData) return slugData;
+        }
         throw new Error("APP_KEY_SLUG_MISMATCH");
       }
       return data;
@@ -441,7 +465,7 @@ async function getDashboardAds(appId = null) {
 
 export async function getDashboardData(options = {}) {
   await ensureDribadsSetup();
-  const app = await resolveAppContext({ appSlug: options?.appSlug });
+  const app = await resolveAppContext({ appSlug: options?.appSlug, appKey: options?.appKey });
   const appId = app?.id || null;
   const adsWithStats = await getDashboardAds(appId);
 
@@ -464,7 +488,7 @@ export async function getDashboardData(options = {}) {
 
 export async function getAnalyticsData(days = 14, options = {}) {
   await ensureDribadsSetup();
-  const app = await resolveAppContext({ appSlug: options?.appSlug });
+  const app = await resolveAppContext({ appSlug: options?.appSlug, appKey: options?.appKey });
   const appId = app?.id || null;
   const db = await getSchemaClient();
 
@@ -515,7 +539,7 @@ function roundMoney(value) {
 export async function getPayoutsData(options = {}) {
   await ensureDribadsSetup();
   const db = await getSchemaClient();
-  const app = await resolveAppContext({ appSlug: options?.appSlug });
+  const app = await resolveAppContext({ appSlug: options?.appSlug, appKey: options?.appKey });
 
   if (!app?.id) {
     return {
@@ -577,7 +601,11 @@ export async function getPayoutsData(options = {}) {
 export async function createPayoutRequest(input = {}) {
   await ensureDribadsSetup();
   const db = await getSchemaClient();
-  const app = await resolveAppContext({ appSlug: input?.appSlug, appKey: input?.appKey });
+  const app = await resolveAppContext({
+    appSlug: input?.appSlug,
+    appKey: input?.appKey,
+    requireValidAppKey: true,
+  });
   if (!app?.id) throw new Error("APP_NOT_FOUND");
 
   const amount = Number(input?.amount || 0);
