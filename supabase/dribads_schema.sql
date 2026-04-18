@@ -128,6 +128,14 @@ create table if not exists dribads.publisher_app_links (
   unique (publisher_user_id, app_id)
 );
 
+create table if not exists dribads.monetization_user_overrides (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  video_monetization_bypass boolean not null default false,
+  notes text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists dribads.kyc_audit_logs (
   id uuid primary key default gen_random_uuid(),
   profile_user_id uuid not null references dribads.publisher_profiles(user_id) on delete cascade,
@@ -155,6 +163,8 @@ grant insert on table dribads.payout_requests to authenticated, service_role;
 grant update on table dribads.payout_requests to service_role;
 grant select, insert, update on table dribads.publisher_profiles to authenticated, service_role;
 grant select, insert, update on table dribads.publisher_app_links to authenticated, service_role;
+grant select on table dribads.monetization_user_overrides to service_role;
+grant insert, update on table dribads.monetization_user_overrides to service_role;
 grant select, insert on table dribads.kyc_audit_logs to service_role;
 
 create index if not exists idx_dribads_ad_views_ad_id on dribads.ad_views(ad_id);
@@ -170,6 +180,7 @@ create index if not exists idx_dribads_payout_requests_requested_at on dribads.p
 create index if not exists idx_dribads_publisher_profiles_kyc on dribads.publisher_profiles(kyc_status);
 create index if not exists idx_dribads_publisher_app_links_user_id on dribads.publisher_app_links(publisher_user_id);
 create index if not exists idx_dribads_publisher_app_links_app_id on dribads.publisher_app_links(app_id);
+create index if not exists idx_dribads_monetization_overrides_bypass on dribads.monetization_user_overrides(video_monetization_bypass);
 create index if not exists idx_dribads_kyc_audit_profile_user_id on dribads.kyc_audit_logs(profile_user_id);
 create index if not exists idx_dribads_kyc_audit_created_at on dribads.kyc_audit_logs(created_at desc);
 
@@ -181,6 +192,7 @@ alter table dribads.app_monetization_features enable row level security;
 alter table dribads.payout_requests enable row level security;
 alter table dribads.publisher_profiles enable row level security;
 alter table dribads.publisher_app_links enable row level security;
+alter table dribads.monetization_user_overrides enable row level security;
 alter table dribads.kyc_audit_logs enable row level security;
 
 drop policy if exists dribads_apps_select on dribads.apps;
@@ -303,6 +315,19 @@ create policy dribads_publisher_app_links_update_own on dribads.publisher_app_li
   using (auth.uid() = publisher_user_id or auth.role() = 'service_role')
   with check (auth.uid() = publisher_user_id or auth.role() = 'service_role');
 
+drop policy if exists dribads_monetization_overrides_service_select on dribads.monetization_user_overrides;
+create policy dribads_monetization_overrides_service_select on dribads.monetization_user_overrides
+  for select
+  to service_role
+  using (true);
+
+drop policy if exists dribads_monetization_overrides_service_write on dribads.monetization_user_overrides;
+create policy dribads_monetization_overrides_service_write on dribads.monetization_user_overrides
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
 drop policy if exists dribads_kyc_audit_service_select on dribads.kyc_audit_logs;
 create policy dribads_kyc_audit_service_select on dribads.kyc_audit_logs
   for select
@@ -346,6 +371,15 @@ select
   false
 from dribads.apps
 on conflict (app_id) do nothing;
+
+-- Internal test bypass: this user can access video monetization without eligibility checks.
+insert into dribads.monetization_user_overrides (user_id, video_monetization_bypass, notes)
+values ('62fb0b2e-8cdd-4226-878f-3eec5131952c', true, 'Internal owner bypass for Dribdo monetization testing')
+on conflict (user_id) do update
+set
+  video_monetization_bypass = excluded.video_monetization_bypass,
+  notes = excluded.notes,
+  updated_at = now();
 
 -- For Dribdo now, keep only video monetization enabled until other features are fully implemented.
 update dribads.app_monetization_features f

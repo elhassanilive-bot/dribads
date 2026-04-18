@@ -11,7 +11,7 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const appSlug = searchParams.get("app") || null;
-    const data = await getMonetizationFeatures(appSlug);
+    const data = await getMonetizationFeatures(appSlug, { ownerUserId: auth.user.id });
     return NextResponse.json(data);
   } catch (error) {
     console.error("GET /api/monetization error", error);

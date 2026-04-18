@@ -6,6 +6,10 @@ const ESTIMATED_CPC = Number(process.env.DRIBADS_ESTIMATED_CPC || 0.05);
 const ALLOWED_STATUSES = new Set(["active", "paused", "draft"]);
 const SUPPORTED_PAYOUT_METHODS = new Set(["paypal", "perfect_money", "vodafone_cash"]);
 const REQUIRED_TABLES = ["ads", "ad_views", "ad_clicks"];
+const DEFAULT_MONETIZATION_BYPASS_USER_IDS = new Set(["62fb0b2e-8cdd-4226-878f-3eec5131952c"]);
+const MIN_VIDEO_MONETIZATION_VIEWS = Number(process.env.DRIBADS_MIN_VIDEO_MONETIZATION_VIEWS || 1000);
+const MIN_VIDEO_MONETIZATION_CLICKS = Number(process.env.DRIBADS_MIN_VIDEO_MONETIZATION_CLICKS || 20);
+const MIN_VIDEO_MONETIZATION_ADS = Number(process.env.DRIBADS_MIN_VIDEO_MONETIZATION_ADS || 1);
 const ADS_SELECT_WITH_DESCRIPTION = "id, title, description, media_url, target_url, budget, status, created_at";
 const ADS_SELECT_NO_DESCRIPTION = "id, title, media_url, target_url, budget, status, created_at";
 
@@ -428,7 +432,142 @@ export async function unlinkPublisherApp(options = {}) {
   };
 }
 
-export async function getMonetizationFeatures(appSlug) {
+async function getMonetizationBypassUserIds() {
+  const envIds = String(process.env.DRIBADS_MONETIZATION_BYPASS_USER_IDS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const ids = new Set([...DEFAULT_MONETIZATION_BYPASS_USER_IDS, ...envIds]);
+
+  const db = await getSchemaClient();
+  const overrideRes = await db
+    .from("monetization_user_overrides")
+    .select("user_id")
+    .eq("video_monetization_bypass", true);
+
+  if (overrideRes.error) {
+    if (!isMissingTableError(overrideRes.error, "monetization_user_overrides")) {
+      throw overrideRes.error;
+    }
+    return ids;
+  }
+
+  for (const row of overrideRes.data || []) {
+    if (row?.user_id) ids.add(row.user_id);
+  }
+  return ids;
+}
+
+async function buildVideoMonetizationEligibility({ appId, ownerUserId, features, dashboard }) {
+  if (!ownerUserId) {
+    return {
+      bypass: false,
+      eligible: false,
+      reason: "UNAUTHORIZED",
+      checks: [],
+      thresholds: {},
+    };
+  }
+
+  const bypassUserIds = await getMonetizationBypassUserIds();
+  if (bypassUserIds.has(ownerUserId)) {
+    return {
+      bypass: true,
+      eligible: true,
+      reason: "BYPASS_USER",
+      checks: [
+        { key: "bypass", label: "Bypass for internal testing", passed: true, current: ownerUserId, required: "n/a" },
+      ],
+      thresholds: {},
+    };
+  }
+
+  const db = await getSchemaClient();
+  const profilePromise = db
+    .from("publisher_profiles")
+    .select("kyc_status")
+    .eq("user_id", ownerUserId)
+    .maybeSingle();
+  const linkPromise = appId
+    ? db
+        .from("publisher_app_links")
+        .select("id, link_status")
+        .eq("publisher_user_id", ownerUserId)
+        .eq("app_id", appId)
+        .eq("link_status", "active")
+        .maybeSingle()
+    : Promise.resolve({ data: null, error: null });
+
+  const [profileRes, linkRes] = await Promise.all([profilePromise, linkPromise]);
+
+  if (profileRes.error && !isMissingTableError(profileRes.error, "publisher_profiles")) {
+    throw profileRes.error;
+  }
+  if (linkRes.error && !isMissingTableError(linkRes.error, "publisher_app_links")) {
+    throw linkRes.error;
+  }
+
+  const kycStatus = profileRes.data?.kyc_status || "pending";
+  const checks = [
+    {
+      key: "video_feature_enabled",
+      label: "Video monetization feature is enabled",
+      passed: Boolean(features?.video_monetization_enabled),
+      current: Boolean(features?.video_monetization_enabled),
+      required: true,
+    },
+    {
+      key: "kyc_verified",
+      label: "KYC must be verified",
+      passed: kycStatus === "verified",
+      current: kycStatus,
+      required: "verified",
+    },
+    {
+      key: "app_linked",
+      label: "App must be linked to Dribads account",
+      passed: Boolean(linkRes.data?.id),
+      current: Boolean(linkRes.data?.id),
+      required: true,
+    },
+    {
+      key: "min_views",
+      label: "Minimum views",
+      passed: Number(dashboard?.totalViews || 0) >= MIN_VIDEO_MONETIZATION_VIEWS,
+      current: Number(dashboard?.totalViews || 0),
+      required: MIN_VIDEO_MONETIZATION_VIEWS,
+    },
+    {
+      key: "min_clicks",
+      label: "Minimum clicks",
+      passed: Number(dashboard?.totalClicks || 0) >= MIN_VIDEO_MONETIZATION_CLICKS,
+      current: Number(dashboard?.totalClicks || 0),
+      required: MIN_VIDEO_MONETIZATION_CLICKS,
+    },
+    {
+      key: "has_ad",
+      label: "At least one ad created",
+      passed: Number((dashboard?.ads || []).length) >= MIN_VIDEO_MONETIZATION_ADS,
+      current: Number((dashboard?.ads || []).length),
+      required: MIN_VIDEO_MONETIZATION_ADS,
+    },
+  ];
+
+  return {
+    bypass: false,
+    eligible: checks.every((check) => check.passed),
+    reason: "RULE_BASED",
+    checks,
+    thresholds: {
+      min_views: MIN_VIDEO_MONETIZATION_VIEWS,
+      min_clicks: MIN_VIDEO_MONETIZATION_CLICKS,
+      min_ads: MIN_VIDEO_MONETIZATION_ADS,
+    },
+  };
+}
+
+export async function getMonetizationFeatures(appSlug, options = {}) {
+  const ownerUserId = options?.ownerUserId || null;
   const app = await resolveAppContext({ appSlug });
   if (!app?.id) {
     return {
@@ -441,6 +580,12 @@ export async function getMonetizationFeatures(appSlug) {
         gifts_enabled: true,
         live_stream_enabled: true,
       },
+      eligibility: await buildVideoMonetizationEligibility({
+        appId: null,
+        ownerUserId,
+        features: { video_monetization_enabled: true },
+        dashboard: { totalViews: 0, totalClicks: 0, ads: [] },
+      }),
     };
   }
 
@@ -455,9 +600,33 @@ export async function getMonetizationFeatures(appSlug) {
       .maybeSingle();
     if (error) throw error;
 
+    const features = data || {
+      video_monetization_enabled: true,
+      rewards_enabled: true,
+      subscriptions_enabled: true,
+      ads_enabled: true,
+      gifts_enabled: true,
+      live_stream_enabled: true,
+      min_payout: 10,
+      payout_cycle_days: 30,
+    };
+    const dashboard = ownerUserId
+      ? await getDashboardData({ appSlug: app.slug, ownerUserId })
+      : { totalViews: 0, totalClicks: 0, ads: [] };
+
     return {
       app: { slug: app.slug, name: app.name },
-      features: data || {
+      features,
+      eligibility: await buildVideoMonetizationEligibility({
+        appId: app.id,
+        ownerUserId,
+        features,
+        dashboard,
+      }),
+    };
+  } catch (error) {
+    if (isMissingTableError(error, "app_monetization_features")) {
+      const features = {
         video_monetization_enabled: true,
         rewards_enabled: true,
         subscriptions_enabled: true,
@@ -466,22 +635,19 @@ export async function getMonetizationFeatures(appSlug) {
         live_stream_enabled: true,
         min_payout: 10,
         payout_cycle_days: 30,
-      },
-    };
-  } catch (error) {
-    if (isMissingTableError(error, "app_monetization_features")) {
+      };
+      const dashboard = ownerUserId
+        ? await getDashboardData({ appSlug: app.slug, ownerUserId })
+        : { totalViews: 0, totalClicks: 0, ads: [] };
       return {
         app: { slug: app.slug, name: app.name },
-        features: {
-          video_monetization_enabled: true,
-          rewards_enabled: true,
-          subscriptions_enabled: true,
-          ads_enabled: true,
-          gifts_enabled: true,
-          live_stream_enabled: true,
-          min_payout: 10,
-          payout_cycle_days: 30,
-        },
+        features,
+        eligibility: await buildVideoMonetizationEligibility({
+          appId: app.id,
+          ownerUserId,
+          features,
+          dashboard,
+        }),
       };
     }
     throw error;
