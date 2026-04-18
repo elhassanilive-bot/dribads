@@ -1,9 +1,14 @@
 ﻿import { NextResponse } from "next/server";
 import { getAnalyticsData, getDashboardData } from "@/lib/dribads/repository";
 import { buildCsv } from "@/lib/dribads/reports";
+import { getAuthorizedUser } from "@/lib/dribads/api-auth";
 
-export async function GET() {
+export async function GET(request) {
   try {
+    const auth = await getAuthorizedUser(request);
+    if (auth.error) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const dashboard = await getDashboardData();
     const analytics = await getAnalyticsData(14);
 
@@ -47,3 +52,5 @@ export async function GET() {
     return NextResponse.json({ error: "Failed to generate CSV" }, { status: 500 });
   }
 }
+
+

@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { getApps } from "@/lib/dribads/repository";
+import { getAuthorizedUser } from "@/lib/dribads/api-auth";
 
-export async function GET() {
+export async function GET(request) {
   try {
+    const auth = await getAuthorizedUser(request);
+    if (auth.error) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const apps = await getApps();
     return NextResponse.json({ apps });
   } catch (error) {

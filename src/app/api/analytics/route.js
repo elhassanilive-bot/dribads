@@ -1,5 +1,6 @@
 import { getAnalyticsData, getDashboardData } from "@/lib/dribads/repository";
 import { corsJson, corsOptionsResponse } from "@/lib/dribads/cors";
+import { getAuthorizedUser } from "@/lib/dribads/api-auth";
 
 function safePercent(clicks, views) {
   if (!views) return 0;
@@ -17,18 +18,18 @@ export async function OPTIONS() {
 
 export async function GET(request) {
   try {
+    const auth = await getAuthorizedUser(request);
+    if (auth.error) {
+      return corsJson({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const appSlug = searchParams.get("app") || searchParams.get("app_slug") || null;
-    const appKey =
-      request.headers.get("x-dribads-app-key") ||
-      searchParams.get("app_key") ||
-      searchParams.get("appKey") ||
-      "";
     const days = Math.min(Math.max(Number(searchParams.get("days") || 14), 1), 90);
 
     const [dashboard, trend] = await Promise.all([
-      getDashboardData({ appSlug, appKey }),
-      getAnalyticsData(days, { appSlug, appKey }),
+      getDashboardData({ appSlug }),
+      getAnalyticsData(days, { appSlug }),
     ]);
 
     const ctr = safePercent(Number(dashboard.totalClicks || 0), Number(dashboard.totalViews || 0));

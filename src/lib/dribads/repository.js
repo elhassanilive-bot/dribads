@@ -1,8 +1,10 @@
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { processPayoutWithGateway } from "@/lib/dribads/payout-gateways";
 
 const DRIBADS_SCHEMA = "dribads";
 const ESTIMATED_CPC = Number(process.env.DRIBADS_ESTIMATED_CPC || 0.05);
 const ALLOWED_STATUSES = new Set(["active", "paused", "draft"]);
+const SUPPORTED_PAYOUT_METHODS = new Set(["paypal", "perfect_money", "vodafone_cash"]);
 const REQUIRED_TABLES = ["ads", "ad_views", "ad_clicks"];
 const ADS_SELECT_WITH_DESCRIPTION = "id, title, description, media_url, target_url, budget, status, created_at";
 const ADS_SELECT_NO_DESCRIPTION = "id, title, media_url, target_url, budget, status, created_at";
@@ -536,6 +538,22 @@ function roundMoney(value) {
   return Number((Number(value || 0)).toFixed(2));
 }
 
+function normalizePayoutMethod(value) {
+  const method = String(value || "").trim().toLowerCase();
+  if (!SUPPORTED_PAYOUT_METHODS.has(method)) {
+    throw new Error("INVALID_PAYOUT_METHOD");
+  }
+  return method;
+}
+
+function normalizePayoutDestination(value) {
+  const destination = String(value || "").trim();
+  if (!destination || destination.length < 3 || destination.length > 160) {
+    throw new Error("INVALID_PAYOUT_DESTINATION");
+  }
+  return destination;
+}
+
 export async function getPayoutsData(options = {}) {
   await ensureDribadsSetup();
   const db = await getSchemaClient();
@@ -561,7 +579,9 @@ export async function getPayoutsData(options = {}) {
     getMonetizationFeatures(app.slug),
     db
       .from("payout_requests")
-      .select("id, amount, status, note, requested_at, processed_at")
+      .select(
+        "id, amount, status, note, payout_method, payout_destination, provider_ref, provider_status, error_message, requested_at, processed_at"
+      )
       .eq("app_id", app.id)
       .order("requested_at", { ascending: false })
       .limit(30),
@@ -609,6 +629,10 @@ export async function createPayoutRequest(input = {}) {
   if (!app?.id) throw new Error("APP_NOT_FOUND");
 
   const amount = Number(input?.amount || 0);
+  const payoutMethod = normalizePayoutMethod(input?.payoutMethod || input?.method);
+  const payoutDestination = normalizePayoutDestination(
+    input?.payoutDestination || input?.destination || input?.payoutEmail || ""
+  );
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error("INVALID_PAYOUT_AMOUNT");
   }
@@ -629,12 +653,17 @@ export async function createPayoutRequest(input = {}) {
     amount: roundMoney(amount),
     status: "pending",
     note: String(input?.note || "").slice(0, 500),
+    payout_method: payoutMethod,
+    payout_destination: payoutDestination,
+    provider_status: "queued",
   };
 
   const { data, error } = await db
     .from("payout_requests")
     .insert(payload)
-    .select("id, amount, status, note, requested_at, processed_at")
+    .select(
+      "id, amount, status, note, payout_method, payout_destination, provider_ref, provider_status, error_message, requested_at, processed_at"
+    )
     .single();
 
   if (error) {
@@ -644,8 +673,58 @@ export async function createPayoutRequest(input = {}) {
     throw error;
   }
 
+  let gatewayResult = null;
+  try {
+    gatewayResult = await processPayoutWithGateway({
+      method: payoutMethod,
+      requestId: data.id,
+      appSlug: app.slug,
+      amount: payload.amount,
+      destination: payoutDestination,
+      note: payload.note,
+    });
+  } catch (gatewayError) {
+    gatewayResult = {
+      success: false,
+      providerStatus: "failed",
+      errorMessage: gatewayError instanceof Error ? gatewayError.message : "PAYOUT_GATEWAY_ERROR",
+    };
+  }
+
+  const updatePayload = gatewayResult?.success
+    ? {
+        status: "approved",
+        provider_ref: gatewayResult.providerRef || null,
+        provider_status: gatewayResult.providerStatus || "submitted",
+        error_message: "",
+        processed_at: new Date().toISOString(),
+      }
+    : {
+        status: "rejected",
+        provider_status: gatewayResult?.providerStatus || "failed",
+        error_message: String(gatewayResult?.errorMessage || "PAYOUT_GATEWAY_ERROR").slice(0, 500),
+        processed_at: new Date().toISOString(),
+      };
+
+  const { data: updatedRequest, error: updateError } = await db
+    .from("payout_requests")
+    .update(updatePayload)
+    .eq("id", data.id)
+    .select(
+      "id, amount, status, note, payout_method, payout_destination, provider_ref, provider_status, error_message, requested_at, processed_at"
+    )
+    .single();
+
+  if (updateError) throw updateError;
+
   return {
     app: { slug: app.slug, name: app.name },
-    request: data,
+    request: updatedRequest,
+    gateway: {
+      success: Boolean(gatewayResult?.success),
+      providerStatus: gatewayResult?.providerStatus || "unknown",
+      providerRef: gatewayResult?.providerRef || null,
+      errorMessage: gatewayResult?.errorMessage || null,
+    },
   };
 }

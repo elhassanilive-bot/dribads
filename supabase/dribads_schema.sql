@@ -71,10 +71,30 @@ create table if not exists dribads.payout_requests (
   app_id uuid not null references dribads.apps(id) on delete cascade,
   amount numeric(12,2) not null check (amount > 0),
   status text not null default 'pending' check (status in ('pending', 'approved', 'paid', 'rejected')),
+  payout_method text not null default 'paypal' check (payout_method in ('paypal', 'perfect_money', 'vodafone_cash')),
+  payout_destination text not null default '',
+  provider_ref text,
+  provider_status text not null default 'queued',
+  error_message text not null default '',
   note text not null default '',
   requested_at timestamptz not null default now(),
   processed_at timestamptz
 );
+
+alter table dribads.payout_requests
+  add column if not exists payout_method text not null default 'paypal';
+
+alter table dribads.payout_requests
+  add column if not exists payout_destination text not null default '';
+
+alter table dribads.payout_requests
+  add column if not exists provider_ref text;
+
+alter table dribads.payout_requests
+  add column if not exists provider_status text not null default 'queued';
+
+alter table dribads.payout_requests
+  add column if not exists error_message text not null default '';
 
 create table if not exists dribads.publisher_profiles (
   user_id uuid primary key references auth.users(id) on delete cascade,
