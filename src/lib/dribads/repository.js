@@ -257,6 +257,24 @@ async function getUserScopedAppIds(ownerUserId) {
   return Array.from(idSet);
 }
 
+async function getLinkedAppIds(ownerUserId) {
+  const db = await getSchemaClient();
+  const res = await db
+    .from("publisher_app_links")
+    .select("app_id")
+    .eq("publisher_user_id", ownerUserId)
+    .eq("link_status", "active");
+
+  if (res.error) {
+    if (isMissingTableError(res.error, "publisher_app_links")) {
+      return [];
+    }
+    throw res.error;
+  }
+
+  return (res.data || []).map((row) => row.app_id).filter(Boolean);
+}
+
 export async function getApps(options = {}) {
   await ensureDribadsSetup();
   const db = await getSchemaClient();
@@ -270,7 +288,11 @@ export async function getApps(options = {}) {
       .order("name", { ascending: true });
 
     if (ownerUserId) {
-      const appIds = await getUserScopedAppIds(ownerUserId);
+      const [usageAppIds, linkedAppIds] = await Promise.all([
+        getUserScopedAppIds(ownerUserId),
+        getLinkedAppIds(ownerUserId),
+      ]);
+      const appIds = Array.from(new Set([...usageAppIds, ...linkedAppIds]));
       if (!appIds.length) return [];
       query = query.in("id", appIds);
     }
@@ -289,6 +311,81 @@ export async function getApps(options = {}) {
     }
     throw error;
   }
+}
+
+export async function getPublisherAppLink(options = {}) {
+  await ensureDribadsSetup();
+  const ownerUserId = options?.ownerUserId || null;
+  if (!ownerUserId) throw new Error("UNAUTHORIZED");
+
+  const app = await resolveAppContext({
+    appSlug: options?.appSlug,
+    appKey: options?.appKey,
+    requireValidAppKey: true,
+  });
+  if (!app?.id) throw new Error("APP_NOT_FOUND");
+
+  const db = await getSchemaClient();
+  const { data, error } = await db
+    .from("publisher_app_links")
+    .select("id, publisher_user_id, app_id, linked_from, link_status, created_at, updated_at")
+    .eq("publisher_user_id", ownerUserId)
+    .eq("app_id", app.id)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingTableError(error, "publisher_app_links")) {
+      throw new Error("APP_LINKS_TABLE_MISSING");
+    }
+    throw error;
+  }
+
+  return {
+    linked: Boolean(data && data.link_status === "active"),
+    app: { slug: app.slug, name: app.name },
+    link: data || null,
+  };
+}
+
+export async function linkPublisherApp(options = {}) {
+  await ensureDribadsSetup();
+  const ownerUserId = options?.ownerUserId || null;
+  if (!ownerUserId) throw new Error("UNAUTHORIZED");
+
+  const app = await resolveAppContext({
+    appSlug: options?.appSlug,
+    appKey: options?.appKey,
+    requireValidAppKey: true,
+  });
+  if (!app?.id) throw new Error("APP_NOT_FOUND");
+
+  const db = await getSchemaClient();
+  const payload = {
+    publisher_user_id: ownerUserId,
+    app_id: app.id,
+    linked_from: String(options?.linkedFrom || "mobile"),
+    link_status: "active",
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await db
+    .from("publisher_app_links")
+    .upsert(payload, { onConflict: "publisher_user_id,app_id" })
+    .select("id, publisher_user_id, app_id, linked_from, link_status, created_at, updated_at")
+    .single();
+
+  if (error) {
+    if (isMissingTableError(error, "publisher_app_links")) {
+      throw new Error("APP_LINKS_TABLE_MISSING");
+    }
+    throw error;
+  }
+
+  return {
+    linked: true,
+    app: { slug: app.slug, name: app.name },
+    link: data,
+  };
 }
 
 export async function getMonetizationFeatures(appSlug) {

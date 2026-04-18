@@ -117,6 +117,17 @@ create table if not exists dribads.publisher_profiles (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists dribads.publisher_app_links (
+  id uuid primary key default gen_random_uuid(),
+  publisher_user_id uuid not null references auth.users(id) on delete cascade,
+  app_id uuid not null references dribads.apps(id) on delete cascade,
+  linked_from text not null default 'mobile',
+  link_status text not null default 'active' check (link_status in ('active', 'revoked')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (publisher_user_id, app_id)
+);
+
 create table if not exists dribads.kyc_audit_logs (
   id uuid primary key default gen_random_uuid(),
   profile_user_id uuid not null references dribads.publisher_profiles(user_id) on delete cascade,
@@ -143,6 +154,7 @@ grant select on table dribads.payout_requests to authenticated, service_role;
 grant insert on table dribads.payout_requests to authenticated, service_role;
 grant update on table dribads.payout_requests to service_role;
 grant select, insert, update on table dribads.publisher_profiles to authenticated, service_role;
+grant select, insert, update on table dribads.publisher_app_links to authenticated, service_role;
 grant select, insert on table dribads.kyc_audit_logs to service_role;
 
 create index if not exists idx_dribads_ad_views_ad_id on dribads.ad_views(ad_id);
@@ -156,6 +168,8 @@ create index if not exists idx_dribads_payout_requests_app_id on dribads.payout_
 create index if not exists idx_dribads_payout_requests_requester_user_id on dribads.payout_requests(requester_user_id);
 create index if not exists idx_dribads_payout_requests_requested_at on dribads.payout_requests(requested_at desc);
 create index if not exists idx_dribads_publisher_profiles_kyc on dribads.publisher_profiles(kyc_status);
+create index if not exists idx_dribads_publisher_app_links_user_id on dribads.publisher_app_links(publisher_user_id);
+create index if not exists idx_dribads_publisher_app_links_app_id on dribads.publisher_app_links(app_id);
 create index if not exists idx_dribads_kyc_audit_profile_user_id on dribads.kyc_audit_logs(profile_user_id);
 create index if not exists idx_dribads_kyc_audit_created_at on dribads.kyc_audit_logs(created_at desc);
 
@@ -166,6 +180,7 @@ alter table dribads.ad_clicks enable row level security;
 alter table dribads.app_monetization_features enable row level security;
 alter table dribads.payout_requests enable row level security;
 alter table dribads.publisher_profiles enable row level security;
+alter table dribads.publisher_app_links enable row level security;
 alter table dribads.kyc_audit_logs enable row level security;
 
 drop policy if exists dribads_apps_select on dribads.apps;
@@ -268,6 +283,25 @@ create policy dribads_publisher_profiles_update_own on dribads.publisher_profile
   to authenticated, service_role
   using (auth.uid() = user_id or auth.role() = 'service_role')
   with check (auth.uid() = user_id or auth.role() = 'service_role');
+
+drop policy if exists dribads_publisher_app_links_select_own on dribads.publisher_app_links;
+create policy dribads_publisher_app_links_select_own on dribads.publisher_app_links
+  for select
+  to authenticated, service_role
+  using (auth.uid() = publisher_user_id or auth.role() = 'service_role');
+
+drop policy if exists dribads_publisher_app_links_insert_own on dribads.publisher_app_links;
+create policy dribads_publisher_app_links_insert_own on dribads.publisher_app_links
+  for insert
+  to authenticated, service_role
+  with check (auth.uid() = publisher_user_id or auth.role() = 'service_role');
+
+drop policy if exists dribads_publisher_app_links_update_own on dribads.publisher_app_links;
+create policy dribads_publisher_app_links_update_own on dribads.publisher_app_links
+  for update
+  to authenticated, service_role
+  using (auth.uid() = publisher_user_id or auth.role() = 'service_role')
+  with check (auth.uid() = publisher_user_id or auth.role() = 'service_role');
 
 drop policy if exists dribads_kyc_audit_service_select on dribads.kyc_audit_logs;
 create policy dribads_kyc_audit_service_select on dribads.kyc_audit_logs
