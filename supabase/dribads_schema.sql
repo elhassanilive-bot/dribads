@@ -56,11 +56,11 @@ alter table dribads.ad_clicks
 create table if not exists dribads.app_monetization_features (
   app_id uuid primary key references dribads.apps(id) on delete cascade,
   video_monetization_enabled boolean not null default true,
-  rewards_enabled boolean not null default true,
-  subscriptions_enabled boolean not null default true,
-  ads_enabled boolean not null default true,
-  gifts_enabled boolean not null default true,
-  live_stream_enabled boolean not null default true,
+  rewards_enabled boolean not null default false,
+  subscriptions_enabled boolean not null default false,
+  ads_enabled boolean not null default false,
+  gifts_enabled boolean not null default false,
+  live_stream_enabled boolean not null default false,
   min_payout numeric(12,2) not null default 10.00,
   payout_cycle_days integer not null default 30,
   updated_at timestamptz not null default now()
@@ -275,13 +275,27 @@ insert into dribads.app_monetization_features (
 select
   id,
   true,
-  true,
-  true,
-  true,
-  true,
-  true
+  false,
+  false,
+  false,
+  false,
+  false
 from dribads.apps
 on conflict (app_id) do nothing;
+
+-- For Dribdo now, keep only video monetization enabled until other features are fully implemented.
+update dribads.app_monetization_features f
+set
+  video_monetization_enabled = true,
+  rewards_enabled = false,
+  subscriptions_enabled = false,
+  ads_enabled = false,
+  gifts_enabled = false,
+  live_stream_enabled = false,
+  updated_at = now()
+from dribads.apps a
+where f.app_id = a.id
+  and a.slug = 'dribdo';
 
 -- Storage bucket for uploaded ad media (images/videos).
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
