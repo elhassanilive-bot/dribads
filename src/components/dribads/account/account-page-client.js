@@ -76,7 +76,7 @@ export function AccountPageClient({ messages }) {
             payout_email: currentUser.email || "",
             payment_method: "bank_transfer",
             publisher_type: "individual",
-            kyc_status: "pending",
+            kyc_status: metadata.kyc_status || "pending",
           },
           { onConflict: "user_id" }
         );
@@ -92,7 +92,7 @@ export function AccountPageClient({ messages }) {
         paymentMethod: resolvedProfile.payment_method || "bank_transfer",
         payoutEmail: resolvedProfile.payout_email || currentUser.email || "",
         publisherType: resolvedProfile.publisher_type || "individual",
-        kycStatus: resolvedProfile.kyc_status || "pending",
+        kycStatus: resolvedProfile.kyc_status || metadata.kyc_status || "pending",
       });
       setIsLoading(false);
     }
@@ -132,7 +132,6 @@ export function AccountPageClient({ messages }) {
           payment_method: form.paymentMethod,
           payout_email: form.payoutEmail.trim(),
           publisher_type: form.publisherType,
-          kyc_status: form.kycStatus,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id" }
