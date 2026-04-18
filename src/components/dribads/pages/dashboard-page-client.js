@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -52,7 +52,7 @@ export function DashboardPageClient({ messages, localeTag }) {
   const [analytics, setAnalytics] = useState([]);
 
   const loginRequiredText = useMemo(
-    () => messages?.authRequired || "يجب تسجيل الدخول لعرض لوحة التحكم والإحصائيات.",
+    () => messages?.authRequired || "ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ù„Ø¹Ø±Ø¶ Ù„ÙˆØ­Ø© Ø§Ù„ØªØ­ÙƒÙ… ÙˆØ§Ù„Ø¥Ø­ØµØ§Ø¦ÙŠØ§Øª.",
     [messages]
   );
 
@@ -115,11 +115,11 @@ export function DashboardPageClient({ messages, localeTag }) {
           <AuthRequiredCard
             title={messages.title}
             message={loginRequiredText}
-            loginLabel={messages.loginNow || "تسجيل الدخول"}
-            signupLabel={messages.signupNow || "إنشاء حساب"}
+            loginLabel={messages.loginNow || "ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„"}
+            signupLabel={messages.signupNow || "Ø¥Ù†Ø´Ø§Ø¡ Ø­Ø³Ø§Ø¨"}
             bullets={[
-              messages.previewBenefit1 || "شاهد الإحصائيات الحقيقية لحملاتك لحظة بلحظة.",
-              messages.previewBenefit2 || "تتبّع النقرات والمشاهدات والأرباح من لوحة واحدة.",
+              messages.previewBenefit1 || "Ø´Ø§Ù‡Ø¯ Ø§Ù„Ø¥Ø­ØµØ§Ø¦ÙŠØ§Øª Ø§Ù„Ø­Ù‚ÙŠÙ‚ÙŠØ© Ù„Ø­Ù…Ù„Ø§ØªÙƒ Ù„Ø­Ø¸Ø© Ø¨Ù„Ø­Ø¸Ø©.",
+              messages.previewBenefit2 || "ØªØªØ¨Ù‘Ø¹ Ø§Ù„Ù†Ù‚Ø±Ø§Øª ÙˆØ§Ù„Ù…Ø´Ø§Ù‡Ø¯Ø§Øª ÙˆØ§Ù„Ø£Ø±Ø¨Ø§Ø­ Ù…Ù† Ù„ÙˆØ­Ø© ÙˆØ§Ø­Ø¯Ø©.",
             ]}
           />
         </div>
@@ -177,7 +177,9 @@ export function DashboardPageClient({ messages, localeTag }) {
             <p className="dribads-note">
               {messages.totalAds}: {Array.isArray(data.ads) ? data.ads.length : 0}
             </p>
-            <p className="dribads-muted">{messages.loginRequiredExport || "يجب تسجيل الدخول لتنزيل التقارير."}</p>
+            {needsLogin ? (
+              <p className="dribads-muted">{messages.loginRequiredExport}</p>
+            ) : null}
           </div>
 
           <DashboardTabs
