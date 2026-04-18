@@ -1,4 +1,4 @@
-import { getAnalyticsData, getDashboardData } from "@/lib/dribads/repository";
+﻿import { getAnalyticsData, getDashboardData } from "@/lib/dribads/repository";
 import { corsJson, corsOptionsResponse } from "@/lib/dribads/cors";
 import { getAuthorizedUser } from "@/lib/dribads/api-auth";
 
@@ -28,8 +28,8 @@ export async function GET(request) {
     const days = Math.min(Math.max(Number(searchParams.get("days") || 14), 1), 90);
 
     const [dashboard, trend] = await Promise.all([
-      getDashboardData({ appSlug }),
-      getAnalyticsData(days, { appSlug }),
+      getDashboardData({ appSlug, ownerUserId: auth.user.id }),
+      getAnalyticsData(days, { appSlug, ownerUserId: auth.user.id }),
     ]);
 
     const ctr = safePercent(Number(dashboard.totalClicks || 0), Number(dashboard.totalViews || 0));
@@ -49,6 +49,10 @@ export async function GET(request) {
     });
   } catch (error) {
     console.error("GET /api/analytics error", error);
+    if (error instanceof Error && error.message === "OWNER_SCOPE_NOT_READY") {
+      return corsJson({ error: "Owner scope is not ready. Run dribads_schema.sql again." }, { status: 500 });
+    }
     return corsJson({ error: "Failed to load analytics" }, { status: 500 });
   }
 }
+

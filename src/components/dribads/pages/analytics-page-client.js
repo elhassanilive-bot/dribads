@@ -115,7 +115,7 @@ export function AnalyticsPageClient({ messages }) {
             loginLabel={messages.loginNow || "تسجيل الدخول"}
             signupLabel={messages.signupNow || "إنشاء حساب"}
             bullets={[
-              messages.previewBenefit1 || "حلّل الأداء يوميًا بدقة مثل المنصات الإعلانية الكبيرة.",
+              messages.previewBenefit1 || "حلّل الأداء يوميًا بدقة ووضوح.",
               messages.previewBenefit2 || "اكتشف الإعلانات الأعلى تأثيرًا بسرعة.",
             ]}
           />

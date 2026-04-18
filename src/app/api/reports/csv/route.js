@@ -9,8 +9,8 @@ export async function GET(request) {
     if (auth.error) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const dashboard = await getDashboardData();
-    const analytics = await getAnalyticsData(14);
+    const dashboard = await getDashboardData({ ownerUserId: auth.user.id });
+    const analytics = await getAnalyticsData(14, { ownerUserId: auth.user.id });
 
     const rows = [
       ["Dribads Report"],
@@ -52,5 +52,6 @@ export async function GET(request) {
     return NextResponse.json({ error: "Failed to generate CSV" }, { status: 500 });
   }
 }
+
 
 

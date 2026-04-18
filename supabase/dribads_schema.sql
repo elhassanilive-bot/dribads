@@ -18,6 +18,7 @@ create table if not exists dribads.apps (
 
 create table if not exists dribads.ads (
   id uuid primary key default gen_random_uuid(),
+  owner_user_id uuid references auth.users(id) on delete set null,
   title text not null,
   description text not null default '',
   media_url text not null,
@@ -32,6 +33,9 @@ alter table dribads.ads
 
 alter table dribads.ads
   add column if not exists description text not null default '';
+
+alter table dribads.ads
+  add column if not exists owner_user_id uuid references auth.users(id) on delete set null;
 
 create table if not exists dribads.ad_views (
   id uuid primary key default gen_random_uuid(),
@@ -68,6 +72,7 @@ create table if not exists dribads.app_monetization_features (
 
 create table if not exists dribads.payout_requests (
   id uuid primary key default gen_random_uuid(),
+  requester_user_id uuid references auth.users(id) on delete set null,
   app_id uuid not null references dribads.apps(id) on delete cascade,
   amount numeric(12,2) not null check (amount > 0),
   status text not null default 'pending' check (status in ('pending', 'approved', 'paid', 'rejected')),
@@ -95,6 +100,9 @@ alter table dribads.payout_requests
 
 alter table dribads.payout_requests
   add column if not exists error_message text not null default '';
+
+alter table dribads.payout_requests
+  add column if not exists requester_user_id uuid references auth.users(id) on delete set null;
 
 create table if not exists dribads.publisher_profiles (
   user_id uuid primary key references auth.users(id) on delete cascade,
@@ -142,8 +150,10 @@ create index if not exists idx_dribads_ad_clicks_ad_id on dribads.ad_clicks(ad_i
 create index if not exists idx_dribads_ad_views_app_id on dribads.ad_views(app_id);
 create index if not exists idx_dribads_ad_clicks_app_id on dribads.ad_clicks(app_id);
 create index if not exists idx_dribads_ads_created_at on dribads.ads(created_at desc);
+create index if not exists idx_dribads_ads_owner_user_id on dribads.ads(owner_user_id);
 create index if not exists idx_dribads_apps_slug on dribads.apps(slug);
 create index if not exists idx_dribads_payout_requests_app_id on dribads.payout_requests(app_id);
+create index if not exists idx_dribads_payout_requests_requester_user_id on dribads.payout_requests(requester_user_id);
 create index if not exists idx_dribads_payout_requests_requested_at on dribads.payout_requests(requested_at desc);
 create index if not exists idx_dribads_publisher_profiles_kyc on dribads.publisher_profiles(kyc_status);
 create index if not exists idx_dribads_kyc_audit_profile_user_id on dribads.kyc_audit_logs(profile_user_id);
@@ -180,7 +190,7 @@ drop policy if exists dribads_ads_insert on dribads.ads;
 create policy dribads_ads_insert on dribads.ads
   for insert
   to authenticated
-  with check (true);
+  with check (auth.uid() = owner_user_id);
 
 -- Tracking rows can be inserted publicly (for app impressions/clicks).
 drop policy if exists dribads_ad_views_insert on dribads.ad_views;
@@ -225,13 +235,13 @@ drop policy if exists dribads_payout_select on dribads.payout_requests;
 create policy dribads_payout_select on dribads.payout_requests
   for select
   to authenticated, service_role
-  using (true);
+  using (auth.uid() = requester_user_id or auth.role() = 'service_role');
 
 drop policy if exists dribads_payout_insert on dribads.payout_requests;
 create policy dribads_payout_insert on dribads.payout_requests
   for insert
   to authenticated, service_role
-  with check (true);
+  with check (auth.uid() = requester_user_id or auth.role() = 'service_role');
 
 drop policy if exists dribads_payout_service_update on dribads.payout_requests;
 create policy dribads_payout_service_update on dribads.payout_requests

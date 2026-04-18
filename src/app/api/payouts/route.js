@@ -1,5 +1,6 @@
 import { createPayoutRequest, getPayoutsData } from "@/lib/dribads/repository";
 import { corsJson, corsOptionsResponse } from "@/lib/dribads/cors";
+import { getAuthorizedUser } from "@/lib/dribads/api-auth";
 
 function mapPayoutError(error) {
   const code = error instanceof Error ? error.message : String(error || "");
@@ -19,6 +20,12 @@ function mapPayoutError(error) {
   if (code === "PAYOUTS_TABLE_MISSING") {
     return { status: 500, error: "Payouts table is missing. Run dribads_schema.sql again." };
   }
+  if (code === "UNAUTHORIZED") {
+    return { status: 401, error: "Unauthorized" };
+  }
+  if (code === "OWNER_SCOPE_NOT_READY") {
+    return { status: 500, error: "Owner scope is not ready. Run dribads_schema.sql again." };
+  }
   return { status: 500, error: "Failed to process payout request" };
 }
 
@@ -28,6 +35,11 @@ export async function OPTIONS() {
 
 export async function GET(request) {
   try {
+    const auth = await getAuthorizedUser(request);
+    if (auth.error) {
+      return corsJson({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const appSlug = searchParams.get("app") || searchParams.get("app_slug") || null;
     const appKey =
@@ -35,7 +47,7 @@ export async function GET(request) {
       searchParams.get("app_key") ||
       searchParams.get("appKey") ||
       "";
-    const data = await getPayoutsData({ appSlug, appKey });
+    const data = await getPayoutsData({ appSlug, appKey, ownerUserId: auth.user.id });
     return corsJson(data);
   } catch (error) {
     console.error("GET /api/payouts error", error);
@@ -45,6 +57,11 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
+    const auth = await getAuthorizedUser(request);
+    if (auth.error) {
+      return corsJson({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const appSlug = body?.app_slug || body?.app || null;
     const appKey = request.headers.get("x-dribads-app-key") || body?.app_key || "";
@@ -57,6 +74,7 @@ export async function POST(request) {
     const data = await createPayoutRequest({
       appSlug,
       appKey,
+      ownerUserId: auth.user.id,
       amount,
       note,
       payoutMethod,

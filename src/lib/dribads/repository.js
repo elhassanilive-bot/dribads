@@ -44,6 +44,11 @@ function isMissingDescriptionError(error) {
   return message.includes("description") && message.includes("does not exist");
 }
 
+function isMissingOwnerColumnError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("owner_user_id") && message.includes("does not exist");
+}
+
 function isMissingTableError(error, tableName) {
   const message = String(error?.message || "").toLowerCase();
   return (
@@ -202,27 +207,75 @@ async function resolveAppContext({ appSlug, appKey, requireValidAppKey = false }
   }
 }
 
-async function getAdsRows() {
+async function getAdsRows(ownerUserId = null) {
   const db = await getSchemaClient();
-  const withDescription = await db.from("ads").select(ADS_SELECT_WITH_DESCRIPTION).order("created_at", { ascending: false });
+  let withDescription = db.from("ads").select(ADS_SELECT_WITH_DESCRIPTION).order("created_at", { ascending: false });
+  if (ownerUserId) {
+    withDescription = withDescription.eq("owner_user_id", ownerUserId);
+  }
+  withDescription = await withDescription;
   if (!withDescription.error) return withDescription.data || [];
   if (!isMissingDescriptionError(withDescription.error)) throw withDescription.error;
 
-  const fallback = await db.from("ads").select(ADS_SELECT_NO_DESCRIPTION).order("created_at", { ascending: false });
+  let fallback = db.from("ads").select(ADS_SELECT_NO_DESCRIPTION).order("created_at", { ascending: false });
+  if (ownerUserId) {
+    fallback = fallback.eq("owner_user_id", ownerUserId);
+  }
+  fallback = await fallback;
   if (fallback.error) throw fallback.error;
   return fallback.data || [];
 }
 
-export async function getApps() {
+async function getUserScopedAppIds(ownerUserId) {
+  const db = await getSchemaClient();
+  const adsRes = await db.from("ads").select("id").eq("owner_user_id", ownerUserId);
+  if (adsRes.error) {
+    if (isMissingOwnerColumnError(adsRes.error)) {
+      throw new Error("OWNER_SCOPE_NOT_READY");
+    }
+    throw adsRes.error;
+  }
+
+  const adIds = (adsRes.data || []).map((row) => row.id).filter(Boolean);
+  if (!adIds.length) return [];
+
+  const [viewsRes, clicksRes] = await Promise.all([
+    db.from("ad_views").select("app_id").in("ad_id", adIds).not("app_id", "is", null),
+    db.from("ad_clicks").select("app_id").in("ad_id", adIds).not("app_id", "is", null),
+  ]);
+
+  if (viewsRes.error) throw viewsRes.error;
+  if (clicksRes.error) throw clicksRes.error;
+
+  const idSet = new Set();
+  for (const row of viewsRes.data || []) {
+    if (row.app_id) idSet.add(row.app_id);
+  }
+  for (const row of clicksRes.data || []) {
+    if (row.app_id) idSet.add(row.app_id);
+  }
+  return Array.from(idSet);
+}
+
+export async function getApps(options = {}) {
   await ensureDribadsSetup();
   const db = await getSchemaClient();
+  const ownerUserId = options?.ownerUserId || null;
 
   try {
-    const { data, error } = await db
+    let query = db
       .from("apps")
       .select("id, slug, name, is_active")
       .eq("is_active", true)
       .order("name", { ascending: true });
+
+    if (ownerUserId) {
+      const appIds = await getUserScopedAppIds(ownerUserId);
+      if (!appIds.length) return [];
+      query = query.in("id", appIds);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return (data || [])
       .filter((app) => app.slug !== "web")
@@ -362,9 +415,13 @@ export async function getDeliverableAd(strategy = "random") {
   return candidates[randomIndex];
 }
 
-export async function createAd(input) {
+export async function createAd(input, options = {}) {
   await ensureDribadsSetup();
   const db = await getSchemaClient();
+  const ownerUserId = options?.ownerUserId || null;
+  if (!ownerUserId) {
+    throw new Error("UNAUTHORIZED");
+  }
   const payload = {
     title: input.title,
     description: input.description || "",
@@ -372,10 +429,12 @@ export async function createAd(input) {
     target_url: input.target_url,
     budget: input.budget,
     status: input.status && ALLOWED_STATUSES.has(input.status) ? input.status : "active",
+    owner_user_id: ownerUserId,
   };
 
   const withDescription = await db.from("ads").insert(payload).select(ADS_SELECT_WITH_DESCRIPTION).single();
   if (!withDescription.error) return mapAdRow(withDescription.data);
+  if (isMissingOwnerColumnError(withDescription.error)) throw new Error("OWNER_SCOPE_NOT_READY");
   if (!isMissingDescriptionError(withDescription.error)) throw withDescription.error;
 
   const payloadFallback = {
@@ -384,9 +443,13 @@ export async function createAd(input) {
     target_url: input.target_url,
     budget: input.budget,
     status: input.status && ALLOWED_STATUSES.has(input.status) ? input.status : "active",
+    owner_user_id: ownerUserId,
   };
   const fallback = await db.from("ads").insert(payloadFallback).select(ADS_SELECT_NO_DESCRIPTION).single();
-  if (fallback.error) throw fallback.error;
+  if (fallback.error) {
+    if (isMissingOwnerColumnError(fallback.error)) throw new Error("OWNER_SCOPE_NOT_READY");
+    throw fallback.error;
+  }
   return mapAdRow(fallback.data);
 }
 
@@ -434,9 +497,9 @@ export async function recordAdClick(adId, context = {}) {
   return { ok: true, app: app ? { slug: app.slug, name: app.name } : null };
 }
 
-async function getDashboardAds(appId = null) {
+async function getDashboardAds(appId = null, ownerUserId = null) {
   const db = await getSchemaClient();
-  const ads = await getAdsRows();
+  const ads = await getAdsRows(ownerUserId);
 
   const adIds = ads.map((ad) => ad.id);
   if (!adIds.length) return [];
@@ -467,9 +530,13 @@ async function getDashboardAds(appId = null) {
 
 export async function getDashboardData(options = {}) {
   await ensureDribadsSetup();
+  const ownerUserId = options?.ownerUserId || null;
+  if (!ownerUserId) {
+    throw new Error("UNAUTHORIZED");
+  }
   const app = await resolveAppContext({ appSlug: options?.appSlug, appKey: options?.appKey });
   const appId = app?.id || null;
-  const adsWithStats = await getDashboardAds(appId);
+  const adsWithStats = await getDashboardAds(appId, ownerUserId);
 
   let totalViews = 0;
   let totalClicks = 0;
@@ -490,6 +557,10 @@ export async function getDashboardData(options = {}) {
 
 export async function getAnalyticsData(days = 14, options = {}) {
   await ensureDribadsSetup();
+  const ownerUserId = options?.ownerUserId || null;
+  if (!ownerUserId) {
+    throw new Error("UNAUTHORIZED");
+  }
   const app = await resolveAppContext({ appSlug: options?.appSlug, appKey: options?.appKey });
   const appId = app?.id || null;
   const db = await getSchemaClient();
@@ -498,8 +569,30 @@ export async function getAnalyticsData(days = 14, options = {}) {
   const start = new Date(buckets[0].date);
   start.setHours(0, 0, 0, 0);
 
+  let ownedAdIds = null;
+  if (ownerUserId) {
+    const adsRes = await db.from("ads").select("id").eq("owner_user_id", ownerUserId);
+    if (adsRes.error) {
+      if (isMissingOwnerColumnError(adsRes.error)) throw new Error("OWNER_SCOPE_NOT_READY");
+      throw adsRes.error;
+    }
+    ownedAdIds = (adsRes.data || []).map((row) => row.id).filter(Boolean);
+    if (!ownedAdIds.length) {
+      return buckets.map((bucket) => ({
+        date: bucket.key,
+        views: 0,
+        clicks: 0,
+      }));
+    }
+  }
+
   let viewsQuery = db.from("ad_views").select("created_at").gte("created_at", start.toISOString());
   let clicksQuery = db.from("ad_clicks").select("created_at").gte("created_at", start.toISOString());
+
+  if (ownedAdIds) {
+    viewsQuery = viewsQuery.in("ad_id", ownedAdIds);
+    clicksQuery = clicksQuery.in("ad_id", ownedAdIds);
+  }
 
   if (appId) {
     viewsQuery = viewsQuery.eq("app_id", appId);
@@ -557,6 +650,10 @@ function normalizePayoutDestination(value) {
 export async function getPayoutsData(options = {}) {
   await ensureDribadsSetup();
   const db = await getSchemaClient();
+  const ownerUserId = options?.ownerUserId || null;
+  if (!ownerUserId) {
+    throw new Error("UNAUTHORIZED");
+  }
   const app = await resolveAppContext({ appSlug: options?.appSlug, appKey: options?.appKey });
 
   if (!app?.id) {
@@ -575,7 +672,7 @@ export async function getPayoutsData(options = {}) {
   }
 
   const [dashboard, monetization, requestsRes] = await Promise.all([
-    getDashboardData({ appSlug: app.slug }),
+    getDashboardData({ appSlug: app.slug, ownerUserId: options?.ownerUserId || null }),
     getMonetizationFeatures(app.slug),
     db
       .from("payout_requests")
@@ -583,6 +680,7 @@ export async function getPayoutsData(options = {}) {
         "id, amount, status, note, payout_method, payout_destination, provider_ref, provider_status, error_message, requested_at, processed_at"
       )
       .eq("app_id", app.id)
+      .eq("requester_user_id", ownerUserId)
       .order("requested_at", { ascending: false })
       .limit(30),
   ]);
@@ -621,6 +719,8 @@ export async function getPayoutsData(options = {}) {
 export async function createPayoutRequest(input = {}) {
   await ensureDribadsSetup();
   const db = await getSchemaClient();
+  const ownerUserId = input?.ownerUserId || null;
+  if (!ownerUserId) throw new Error("UNAUTHORIZED");
   const app = await resolveAppContext({
     appSlug: input?.appSlug,
     appKey: input?.appKey,
@@ -637,7 +737,7 @@ export async function createPayoutRequest(input = {}) {
     throw new Error("INVALID_PAYOUT_AMOUNT");
   }
 
-  const payoutData = await getPayoutsData({ appSlug: app.slug });
+  const payoutData = await getPayoutsData({ appSlug: app.slug, ownerUserId });
   const minPayout = Number(payoutData.overview.minPayout || 10);
   const available = Number(payoutData.overview.availableToWithdraw || 0);
 
@@ -650,6 +750,7 @@ export async function createPayoutRequest(input = {}) {
 
   const payload = {
     app_id: app.id,
+    requester_user_id: ownerUserId,
     amount: roundMoney(amount),
     status: "pending",
     note: String(input?.note || "").slice(0, 500),

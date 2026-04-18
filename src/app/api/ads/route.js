@@ -1,4 +1,4 @@
-import { revalidatePath } from "next/cache";
+﻿import { revalidatePath } from "next/cache";
 import { createAd, getDeliverableAd } from "@/lib/dribads/repository";
 import { validateAdInput } from "@/lib/dribads/validators";
 import { corsJson, corsOptionsResponse } from "@/lib/dribads/cors";
@@ -57,7 +57,7 @@ export async function POST(request) {
       return corsJson({ error: validation.error }, { status: 400 });
     }
 
-    const ad = await createAd(validation.data);
+    const ad = await createAd(validation.data, { ownerUserId: auth.user.id });
 
     revalidatePath("/");
     revalidatePath("/dashboard");
@@ -65,6 +65,10 @@ export async function POST(request) {
     return corsJson({ ad }, { status: 201 });
   } catch (error) {
     console.error("POST /api/ads error", error);
+    if (error instanceof Error && error.message === "OWNER_SCOPE_NOT_READY") {
+      return corsJson({ error: "Owner scope is not ready. Run dribads_schema.sql again." }, { status: 500 });
+    }
     return corsJson({ error: "Failed to create ad" }, { status: 500 });
   }
 }
+
