@@ -1,8 +1,10 @@
 ﻿"use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { isValidHttpUrl, isValidStatus } from "@/lib/dribads/validators";
 import { tokenizeTextWithLinks } from "@/lib/dribads/text";
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { AuthRequiredCard } from "@/components/dribads/auth-required-card";
 
 const initialForm = {
   title: "",
@@ -43,6 +45,8 @@ function DescriptionText({ text }) {
 }
 
 export function CreateAdForm({ messages }) {
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [form, setForm] = useState(initialForm);
   const [status, setStatus] = useState({ type: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -75,9 +79,49 @@ export function CreateAdForm({ messages }) {
 
   const hasClientErrors = Object.keys(errors).length > 0;
 
+  useEffect(() => {
+    let mounted = true;
+    const supabase = getSupabaseBrowserClient();
+
+    async function syncAuthState() {
+      if (!supabase) {
+        if (mounted) {
+          setIsAuthenticated(false);
+          setIsCheckingAuth(false);
+        }
+        return;
+      }
+
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      setIsAuthenticated(Boolean(data?.session));
+      setIsCheckingAuth(false);
+    }
+
+    syncAuthState();
+
+    const { data: authSub } =
+      supabase?.auth.onAuthStateChange((_event, session) => {
+        setIsAuthenticated(Boolean(session));
+      }) || {};
+
+    return () => {
+      mounted = false;
+      authSub?.subscription?.unsubscribe?.();
+    };
+  }, []);
+
   function onChange(event) {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
+  }
+
+  async function getAuthHeader() {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return {};
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
   async function removeUploadedMedia(showMessage = true) {
@@ -92,9 +136,10 @@ export function CreateAdForm({ messages }) {
     }
 
     try {
+      const authHeader = await getAuthHeader();
       const response = await fetch("/api/media/delete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeader },
         body: JSON.stringify({ path: mediaPath }),
       });
       const payload = await response.json();
@@ -147,8 +192,10 @@ export function CreateAdForm({ messages }) {
       const formData = new FormData();
       formData.append("file", file);
 
+      const authHeader = await getAuthHeader();
       const response = await fetch("/api/media/upload", {
         method: "POST",
+        headers: authHeader,
         body: formData,
       });
       const payload = await response.json();
@@ -182,9 +229,10 @@ export function CreateAdForm({ messages }) {
     setStatus({ type: "", message: "" });
 
     try {
+      const authHeader = await getAuthHeader();
       const response = await fetch("/api/ads", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeader },
         body: JSON.stringify({
           ...form,
           budget: Number(form.budget),
@@ -208,6 +256,29 @@ export function CreateAdForm({ messages }) {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  if (isCheckingAuth) {
+    return (
+      <section className="dribads-card dribads-panel">
+        <p className="dribads-note">{messages.loading || "Loading..."}</p>
+      </section>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <AuthRequiredCard
+        title={messages.title}
+        message={messages.authRequired || "يجب تسجيل الدخول أولا لإنشاء إعلان."}
+        loginLabel={messages.loginNow || "تسجيل الدخول"}
+        signupLabel={messages.signupNow || "إنشاء حساب"}
+        bullets={[
+          messages.previewBenefit1 || "أنشئ حملاتك بسرعة وارفع الفيديو أو الصورة مباشرة.",
+          messages.previewBenefit2 || "تابع النتائج من لوحة التحكم والأرباح في مكان واحد.",
+        ]}
+      />
+    );
   }
 
   return (

@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { createAd, getDeliverableAd } from "@/lib/dribads/repository";
 import { validateAdInput } from "@/lib/dribads/validators";
 import { corsJson, corsOptionsResponse } from "@/lib/dribads/cors";
+import { getAuthorizedUser } from "@/lib/dribads/api-auth";
 
 export async function OPTIONS() {
   return corsOptionsResponse();
@@ -44,6 +45,11 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
+    const auth = await getAuthorizedUser(request);
+    if (auth.error) {
+      return corsJson({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const validation = validateAdInput(body);
 

@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { ensureIdentityMetadata } from "@/lib/dribads/identity";
 
 export function LoginForm({ messages }) {
-  const [mode, setMode] = useState("login");
+  const searchParams = useSearchParams();
+  const [mode, setMode] = useState(() => (searchParams?.get("mode") === "signup" ? "signup" : "login"));
   const [fullName, setFullName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [email, setEmail] = useState("");
@@ -16,6 +17,17 @@ export function LoginForm({ messages }) {
   const router = useRouter();
 
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+
+  useEffect(() => {
+    const queryMode = searchParams?.get("mode");
+    if (queryMode === "signup") {
+      setMode("signup");
+      return;
+    }
+    if (queryMode === "login") {
+      setMode("login");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (!supabase) return undefined;

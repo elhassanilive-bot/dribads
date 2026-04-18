@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getAuthorizedUser } from "@/lib/dribads/api-auth";
 
 const BUCKET = "dribads-media";
 
@@ -9,6 +10,11 @@ function isSafePath(path) {
 
 export async function POST(request) {
   try {
+    const auth = await getAuthorizedUser(request);
+    if (auth.error) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const supabase = await getSupabaseAdminClient();
     if (!supabase) {
       return NextResponse.json({ error: "Supabase admin client is not configured" }, { status: 500 });

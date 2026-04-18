@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { DashboardAnalytics } from "@/components/dribads/dashboard-analytics";
 import { AppSelector } from "@/components/dribads/app-selector";
 import { authJsonFetch } from "@/lib/dribads/client-auth";
+import { AuthRequiredCard } from "@/components/dribads/auth-required-card";
 
 function safePercent(a, b) {
   if (!b) return 0;
@@ -109,15 +109,16 @@ export function AnalyticsPageClient({ messages }) {
     return (
       <div className="dribads-page">
         <div className="dribads-container dribads-stack">
-          <section className="dribads-card dribads-stack">
-            <h1 className="dribads-section-title">{messages.title}</h1>
-            <p className="dribads-feedback dribads-feedback-error">{loginRequiredText}</p>
-            <div className="dribads-toolbar-actions">
-              <Link href="/login" className="dribads-btn dribads-btn-primary">
-                {messages.loginNow || "تسجيل الدخول"}
-              </Link>
-            </div>
-          </section>
+          <AuthRequiredCard
+            title={messages.title}
+            message={loginRequiredText}
+            loginLabel={messages.loginNow || "تسجيل الدخول"}
+            signupLabel={messages.signupNow || "إنشاء حساب"}
+            bullets={[
+              messages.previewBenefit1 || "حلّل الأداء يوميًا بدقة مثل المنصات الإعلانية الكبيرة.",
+              messages.previewBenefit2 || "اكتشف الإعلانات الأعلى تأثيرًا بسرعة.",
+            ]}
+          />
         </div>
       </div>
     );
@@ -229,4 +230,3 @@ export function AnalyticsPageClient({ messages }) {
     </div>
   );
 }
-
