@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthorizedUser } from "@/lib/dribads/api-auth";
-import { getPublisherAppLink, linkPublisherApp } from "@/lib/dribads/repository";
+import { getPublisherAppLink, linkPublisherApp, unlinkPublisherApp } from "@/lib/dribads/repository";
 
 function parseAppContext(request, body = null) {
   const { searchParams } = new URL(request.url);
@@ -69,6 +69,25 @@ export async function POST(request) {
     return NextResponse.json(data, { status: 201 });
   } catch (error) {
     console.error("POST /api/mobile/link-app error", error);
+    const mapped = mapError(error);
+    return NextResponse.json({ error: mapped.error }, { status: mapped.status });
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    const auth = await getAuthorizedUser(request);
+    if (auth.error) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { appSlug, appKey } = parseAppContext(request);
+    const data = await unlinkPublisherApp({
+      ownerUserId: auth.user.id,
+      appSlug,
+      appKey,
+    });
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("DELETE /api/mobile/link-app error", error);
     const mapped = mapError(error);
     return NextResponse.json({ error: mapped.error }, { status: mapped.status });
   }

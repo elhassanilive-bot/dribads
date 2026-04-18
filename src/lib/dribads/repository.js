@@ -388,6 +388,46 @@ export async function linkPublisherApp(options = {}) {
   };
 }
 
+export async function unlinkPublisherApp(options = {}) {
+  await ensureDribadsSetup();
+  const ownerUserId = options?.ownerUserId || null;
+  if (!ownerUserId) throw new Error("UNAUTHORIZED");
+
+  const app = await resolveAppContext({
+    appSlug: options?.appSlug,
+    appKey: options?.appKey,
+    requireValidAppKey: true,
+  });
+  if (!app?.id) throw new Error("APP_NOT_FOUND");
+
+  const db = await getSchemaClient();
+  const payload = {
+    link_status: "revoked",
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await db
+    .from("publisher_app_links")
+    .update(payload)
+    .eq("publisher_user_id", ownerUserId)
+    .eq("app_id", app.id)
+    .select("id, publisher_user_id, app_id, linked_from, link_status, created_at, updated_at")
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingTableError(error, "publisher_app_links")) {
+      throw new Error("APP_LINKS_TABLE_MISSING");
+    }
+    throw error;
+  }
+
+  return {
+    linked: false,
+    app: { slug: app.slug, name: app.name },
+    link: data || null,
+  };
+}
+
 export async function getMonetizationFeatures(appSlug) {
   const app = await resolveAppContext({ appSlug });
   if (!app?.id) {
