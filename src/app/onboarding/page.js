@@ -1,7 +1,7 @@
 ﻿import { getDribadsMessages } from "@/lib/dribads/i18n";
 import { getRequestLocale } from "@/lib/dribads/locale-server";
 
-const codeSample = `fetch("/api/ads", { cache: "no-store" })\n  .then((res) => res.json())\n  .then(({ ad }) => {\n    if (!ad) return;\n    // Render ad.media_url and track view\n    fetch("/api/ad-view", {\n      method: "POST",\n      headers: { "Content-Type": "application/json" },\n      body: JSON.stringify({ ad_id: ad.id }),\n    });\n  });`;
+const codeSample = `const videoOwnerId = "<creator_user_uuid>";\n\nfetch(\`/api/ads?placement=pre_roll&video_owner_id=\${videoOwnerId}&app=dribdo\`,\n  { cache: "no-store" }\n)\n  .then((res) => res.json())\n  .then(({ ad }) => {\n    if (!ad) return;\n\n    // 1) Mark impression\n    fetch("/api/ad-view", {\n      method: "POST",\n      headers: { "Content-Type": "application/json" },\n      body: JSON.stringify({ ad_id: ad.id, app_slug: "dribdo" }),\n    });\n\n    // 2) On click => /api/ad-click\n    // 3) On skip => /api/ad-skip\n    // 4) On complete => /api/ad-complete\n  });`;
 
 export default async function OnboardingPage() {
   const locale = await getRequestLocale();

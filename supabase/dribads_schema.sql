@@ -24,6 +24,9 @@ create table if not exists dribads.ads (
   media_url text not null,
   target_url text not null,
   status text not null default 'active',
+  ad_placement text not null default 'pre_roll' check (ad_placement in ('pre_roll', 'post_roll', 'both')),
+  skippable_enabled boolean not null default true,
+  skip_after_seconds integer not null default 5 check (skip_after_seconds >= 0 and skip_after_seconds <= 30),
   budget numeric(12,2) not null check (budget > 0),
   created_at timestamptz not null default now()
 );
@@ -37,6 +40,27 @@ alter table dribads.ads
 alter table dribads.ads
   add column if not exists owner_user_id uuid references auth.users(id) on delete set null;
 
+alter table dribads.ads
+  add column if not exists ad_placement text not null default 'pre_roll';
+
+alter table dribads.ads
+  add column if not exists skippable_enabled boolean not null default true;
+
+alter table dribads.ads
+  add column if not exists skip_after_seconds integer not null default 5;
+
+alter table dribads.ads
+  drop constraint if exists ads_ad_placement_check;
+
+alter table dribads.ads
+  add constraint ads_ad_placement_check check (ad_placement in ('pre_roll', 'post_roll', 'both'));
+
+alter table dribads.ads
+  drop constraint if exists ads_skip_after_seconds_check;
+
+alter table dribads.ads
+  add constraint ads_skip_after_seconds_check check (skip_after_seconds >= 0 and skip_after_seconds <= 30);
+
 create table if not exists dribads.ad_views (
   id uuid primary key default gen_random_uuid(),
   ad_id uuid not null references dribads.ads(id) on delete cascade,
@@ -48,6 +72,30 @@ create table if not exists dribads.ad_clicks (
   id uuid primary key default gen_random_uuid(),
   ad_id uuid not null references dribads.ads(id) on delete cascade,
   app_id uuid references dribads.apps(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists dribads.ad_skips (
+  id uuid primary key default gen_random_uuid(),
+  ad_id uuid not null references dribads.ads(id) on delete cascade,
+  app_id uuid references dribads.apps(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists dribads.ad_completions (
+  id uuid primary key default gen_random_uuid(),
+  ad_id uuid not null references dribads.ads(id) on delete cascade,
+  app_id uuid references dribads.apps(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists dribads.ad_earnings_ledger (
+  id uuid primary key default gen_random_uuid(),
+  ad_id uuid not null references dribads.ads(id) on delete cascade,
+  ad_click_id uuid unique references dribads.ad_clicks(id) on delete set null,
+  owner_user_id uuid not null references auth.users(id) on delete cascade,
+  app_id uuid references dribads.apps(id) on delete set null,
+  amount numeric(12,4) not null check (amount > 0),
   created_at timestamptz not null default now()
 );
 
@@ -128,6 +176,14 @@ create table if not exists dribads.publisher_app_links (
   unique (publisher_user_id, app_id)
 );
 
+create table if not exists dribads.publisher_eligibility_stats (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  followers_count bigint not null default 0 check (followers_count >= 0),
+  video_views_count bigint not null default 0 check (video_views_count >= 0),
+  watch_minutes bigint not null default 0 check (watch_minutes >= 0),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists dribads.monetization_user_overrides (
   user_id uuid primary key references auth.users(id) on delete cascade,
   video_monetization_bypass boolean not null default false,
@@ -156,6 +212,12 @@ grant insert on table dribads.ad_views to anon, authenticated, service_role;
 
 grant select on table dribads.ad_clicks to authenticated, service_role;
 grant insert on table dribads.ad_clicks to anon, authenticated, service_role;
+grant select on table dribads.ad_skips to authenticated, service_role;
+grant insert on table dribads.ad_skips to anon, authenticated, service_role;
+grant select on table dribads.ad_completions to authenticated, service_role;
+grant insert on table dribads.ad_completions to anon, authenticated, service_role;
+grant select on table dribads.ad_earnings_ledger to authenticated, service_role;
+grant insert on table dribads.ad_earnings_ledger to service_role;
 grant select on table dribads.app_monetization_features to authenticated, service_role;
 grant insert, update on table dribads.app_monetization_features to service_role;
 grant select on table dribads.payout_requests to authenticated, service_role;
@@ -163,6 +225,8 @@ grant insert on table dribads.payout_requests to authenticated, service_role;
 grant update on table dribads.payout_requests to service_role;
 grant select, insert, update on table dribads.publisher_profiles to authenticated, service_role;
 grant select, insert, update on table dribads.publisher_app_links to authenticated, service_role;
+grant select on table dribads.publisher_eligibility_stats to authenticated, service_role;
+grant insert, update on table dribads.publisher_eligibility_stats to service_role;
 grant select on table dribads.monetization_user_overrides to service_role;
 grant insert, update on table dribads.monetization_user_overrides to service_role;
 grant select, insert on table dribads.kyc_audit_logs to service_role;
@@ -171,6 +235,14 @@ create index if not exists idx_dribads_ad_views_ad_id on dribads.ad_views(ad_id)
 create index if not exists idx_dribads_ad_clicks_ad_id on dribads.ad_clicks(ad_id);
 create index if not exists idx_dribads_ad_views_app_id on dribads.ad_views(app_id);
 create index if not exists idx_dribads_ad_clicks_app_id on dribads.ad_clicks(app_id);
+create index if not exists idx_dribads_ad_skips_ad_id on dribads.ad_skips(ad_id);
+create index if not exists idx_dribads_ad_skips_app_id on dribads.ad_skips(app_id);
+create index if not exists idx_dribads_ad_completions_ad_id on dribads.ad_completions(ad_id);
+create index if not exists idx_dribads_ad_completions_app_id on dribads.ad_completions(app_id);
+create index if not exists idx_dribads_earnings_owner_user_id on dribads.ad_earnings_ledger(owner_user_id);
+create index if not exists idx_dribads_earnings_ad_id on dribads.ad_earnings_ledger(ad_id);
+create index if not exists idx_dribads_earnings_app_id on dribads.ad_earnings_ledger(app_id);
+create index if not exists idx_dribads_earnings_created_at on dribads.ad_earnings_ledger(created_at desc);
 create index if not exists idx_dribads_ads_created_at on dribads.ads(created_at desc);
 create index if not exists idx_dribads_ads_owner_user_id on dribads.ads(owner_user_id);
 create index if not exists idx_dribads_apps_slug on dribads.apps(slug);
@@ -180,6 +252,7 @@ create index if not exists idx_dribads_payout_requests_requested_at on dribads.p
 create index if not exists idx_dribads_publisher_profiles_kyc on dribads.publisher_profiles(kyc_status);
 create index if not exists idx_dribads_publisher_app_links_user_id on dribads.publisher_app_links(publisher_user_id);
 create index if not exists idx_dribads_publisher_app_links_app_id on dribads.publisher_app_links(app_id);
+create index if not exists idx_dribads_publisher_eligibility_updated_at on dribads.publisher_eligibility_stats(updated_at desc);
 create index if not exists idx_dribads_monetization_overrides_bypass on dribads.monetization_user_overrides(video_monetization_bypass);
 create index if not exists idx_dribads_kyc_audit_profile_user_id on dribads.kyc_audit_logs(profile_user_id);
 create index if not exists idx_dribads_kyc_audit_created_at on dribads.kyc_audit_logs(created_at desc);
@@ -188,10 +261,14 @@ alter table dribads.apps enable row level security;
 alter table dribads.ads enable row level security;
 alter table dribads.ad_views enable row level security;
 alter table dribads.ad_clicks enable row level security;
+alter table dribads.ad_skips enable row level security;
+alter table dribads.ad_completions enable row level security;
+alter table dribads.ad_earnings_ledger enable row level security;
 alter table dribads.app_monetization_features enable row level security;
 alter table dribads.payout_requests enable row level security;
 alter table dribads.publisher_profiles enable row level security;
 alter table dribads.publisher_app_links enable row level security;
+alter table dribads.publisher_eligibility_stats enable row level security;
 alter table dribads.monetization_user_overrides enable row level security;
 alter table dribads.kyc_audit_logs enable row level security;
 
@@ -232,6 +309,30 @@ create policy dribads_ad_clicks_insert on dribads.ad_clicks
   to anon, authenticated
   with check (true);
 
+drop policy if exists dribads_ad_skips_insert on dribads.ad_skips;
+create policy dribads_ad_skips_insert on dribads.ad_skips
+  for insert
+  to anon, authenticated
+  with check (true);
+
+drop policy if exists dribads_ad_completions_insert on dribads.ad_completions;
+create policy dribads_ad_completions_insert on dribads.ad_completions
+  for insert
+  to anon, authenticated
+  with check (true);
+
+drop policy if exists dribads_earnings_select_own on dribads.ad_earnings_ledger;
+create policy dribads_earnings_select_own on dribads.ad_earnings_ledger
+  for select
+  to authenticated, service_role
+  using (auth.uid() = owner_user_id or auth.role() = 'service_role');
+
+drop policy if exists dribads_earnings_service_insert on dribads.ad_earnings_ledger;
+create policy dribads_earnings_service_insert on dribads.ad_earnings_ledger
+  for insert
+  to service_role
+  with check (true);
+
 -- Optional read policies for analytics dashboards.
 drop policy if exists dribads_ad_views_select on dribads.ad_views;
 create policy dribads_ad_views_select on dribads.ad_views
@@ -241,6 +342,18 @@ create policy dribads_ad_views_select on dribads.ad_views
 
 drop policy if exists dribads_ad_clicks_select on dribads.ad_clicks;
 create policy dribads_ad_clicks_select on dribads.ad_clicks
+  for select
+  to authenticated
+  using (true);
+
+drop policy if exists dribads_ad_skips_select on dribads.ad_skips;
+create policy dribads_ad_skips_select on dribads.ad_skips
+  for select
+  to authenticated
+  using (true);
+
+drop policy if exists dribads_ad_completions_select on dribads.ad_completions;
+create policy dribads_ad_completions_select on dribads.ad_completions
   for select
   to authenticated
   using (true);
@@ -314,6 +427,19 @@ create policy dribads_publisher_app_links_update_own on dribads.publisher_app_li
   to authenticated, service_role
   using (auth.uid() = publisher_user_id or auth.role() = 'service_role')
   with check (auth.uid() = publisher_user_id or auth.role() = 'service_role');
+
+drop policy if exists dribads_publisher_eligibility_stats_select_own on dribads.publisher_eligibility_stats;
+create policy dribads_publisher_eligibility_stats_select_own on dribads.publisher_eligibility_stats
+  for select
+  to authenticated, service_role
+  using (auth.uid() = user_id or auth.role() = 'service_role');
+
+drop policy if exists dribads_publisher_eligibility_stats_service_write on dribads.publisher_eligibility_stats;
+create policy dribads_publisher_eligibility_stats_service_write on dribads.publisher_eligibility_stats
+  for all
+  to service_role
+  using (true)
+  with check (true);
 
 drop policy if exists dribads_monetization_overrides_service_select on dribads.monetization_user_overrides;
 create policy dribads_monetization_overrides_service_select on dribads.monetization_user_overrides

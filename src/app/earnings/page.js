@@ -6,6 +6,5 @@ export default async function EarningsPage() {
   const locale = await getRequestLocale();
   const messages = getDribadsMessages(locale).earningsPage;
 
-  return <EarningsPageClient messages={messages} />;
+  return <EarningsPageClient messages={messages} localeTag={locale} />;
 }
-

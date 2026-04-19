@@ -13,6 +13,9 @@ const initialForm = {
   target_url: "",
   budget: "",
   status: "active",
+  ad_placement: "pre_roll",
+  skippable_enabled: true,
+  skip_after_seconds: "5",
 };
 
 function isVideo(mediaUrl) {
@@ -114,6 +117,11 @@ export function CreateAdForm({ messages }) {
   function onChange(event) {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
+  }
+
+  function onToggleSkippable(event) {
+    const enabled = Boolean(event.target.checked);
+    setForm((current) => ({ ...current, skippable_enabled: enabled }));
   }
 
   async function getAuthHeader() {
@@ -236,6 +244,7 @@ export function CreateAdForm({ messages }) {
         body: JSON.stringify({
           ...form,
           budget: Number(form.budget),
+          skip_after_seconds: Number(form.skip_after_seconds || 5),
         }),
       });
 
@@ -383,6 +392,40 @@ export function CreateAdForm({ messages }) {
               <option value="draft">{messages.status.draft}</option>
             </select>
             {errors.status ? <span className="dribads-input-error">{errors.status}</span> : null}
+          </label>
+
+          <label className="dribads-label">
+            {messages.fields.placement || "موضع الإعلان"}
+            <select name="ad_placement" value={form.ad_placement} onChange={onChange} className="dribads-select">
+              <option value="pre_roll">{messages.fields.preRoll || "قبل تشغيل الفيديو"}</option>
+              <option value="post_roll">{messages.fields.postRoll || "نهاية الفيديو"}</option>
+              <option value="both">{messages.fields.bothRolls || "قبل + نهاية"}</option>
+            </select>
+          </label>
+
+          <label className="dribads-label">
+            {messages.fields.skipAfterSeconds || "تخطي بعد (ثانية)"}
+            <input
+              type="number"
+              min="0"
+              max="30"
+              step="1"
+              name="skip_after_seconds"
+              value={form.skip_after_seconds}
+              onChange={onChange}
+              className="dribads-input"
+              disabled={!form.skippable_enabled}
+            />
+          </label>
+
+          <label className="dribads-label">
+            {messages.fields.skippable || "الإعلان قابل للتخطي"}
+            <input
+              type="checkbox"
+              checked={Boolean(form.skippable_enabled)}
+              onChange={onToggleSkippable}
+              className="dribads-checkbox"
+            />
           </label>
         </div>
 

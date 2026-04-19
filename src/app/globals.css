@@ -699,6 +699,147 @@ a {
   color: #b91c1c;
 }
 
+.dribads-eligibility-panel {
+  display: grid;
+  gap: 1rem;
+  background:
+    radial-gradient(900px 220px at 100% -20%, rgb(24 108 255 / 0.12), transparent 60%),
+    linear-gradient(160deg, #ffffff 0%, #f5f9ff 100%);
+}
+
+.dribads-eligibility-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.dribads-eligibility-badge {
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.dribads-eligibility-badge.eligible {
+  background: #ecfdf5;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.dribads-eligibility-badge.not-eligible {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #9a3412;
+}
+
+.dribads-eligibility-layout {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.dribads-eligibility-overall {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0.9rem;
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--brand) 20%, var(--line) 80%);
+  background: rgb(255 255 255 / 0.86);
+}
+
+.dribads-eligibility-overall-ring {
+  --progress-angle: 0deg;
+  width: 130px;
+  height: 130px;
+  margin-inline: auto;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  background:
+    radial-gradient(circle at center, #fff 58%, transparent 59%),
+    conic-gradient(color-mix(in srgb, var(--brand-strong) 78%, #fff 22%) var(--progress-angle), #e5edf9 0);
+}
+
+.dribads-eligibility-overall-ring strong {
+  font-size: 1.05rem;
+  line-height: 1.1;
+}
+
+.dribads-eligibility-overall-ring span {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.dribads-eligibility-gates {
+  display: grid;
+  gap: 0.46rem;
+}
+
+.dribads-eligibility-gate-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.48rem 0.62rem;
+  border-radius: 0.7rem;
+  background: #f8fbff;
+  border: 1px solid #e2eaf5;
+  font-size: 0.88rem;
+}
+
+.dribads-eligibility-gate-row .is-pass {
+  color: #15803d;
+}
+
+.dribads-eligibility-gate-row .is-fail {
+  color: #b45309;
+}
+
+.dribads-eligibility-rings-grid {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.dribads-eligibility-ring-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.75rem;
+  border-radius: 0.95rem;
+  border: 1px solid #e2eaf5;
+  background: #fff;
+}
+
+.dribads-eligibility-ring {
+  --progress-angle: 0deg;
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  background:
+    radial-gradient(circle at center, #fff 57%, transparent 58%),
+    conic-gradient(color-mix(in srgb, var(--brand) 72%, #fff 28%) var(--progress-angle), #e7eef8 0);
+}
+
+.dribads-eligibility-ring-meta p {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.dribads-eligibility-ring-meta span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .dribads-table-wrap {
   overflow-x: auto;
 }
@@ -1251,6 +1392,15 @@ html[dir="rtl"] .dribads-kicker {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
+  .dribads-eligibility-layout {
+    grid-template-columns: minmax(280px, 1fr) minmax(0, 2fr);
+    align-items: start;
+  }
+
+  .dribads-eligibility-rings-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .dribads-account-ids {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1281,6 +1431,12 @@ html[dir="rtl"] .dribads-kicker {
 
   .dribads-auth-preview {
     grid-template-columns: 1fr;
+  }
+
+  .dribads-eligibility-ring-card {
+    grid-template-columns: 1fr;
+    text-align: center;
+    justify-items: center;
   }
 
   .dribads-auth-btn {

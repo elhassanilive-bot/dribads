@@ -3,15 +3,21 @@ import { processPayoutWithGateway } from "@/lib/dribads/payout-gateways";
 
 const DRIBADS_SCHEMA = "dribads";
 const ESTIMATED_CPC = Number(process.env.DRIBADS_ESTIMATED_CPC || 0.05);
+const DRIBADS_CLICK_PAYOUT_CPC = Number(process.env.DRIBADS_CLICK_PAYOUT_CPC || ESTIMATED_CPC || 0.05);
 const ALLOWED_STATUSES = new Set(["active", "paused", "draft"]);
 const SUPPORTED_PAYOUT_METHODS = new Set(["paypal", "perfect_money", "vodafone_cash"]);
 const REQUIRED_TABLES = ["ads", "ad_views", "ad_clicks"];
 const DEFAULT_MONETIZATION_BYPASS_USER_IDS = new Set(["62fb0b2e-8cdd-4226-878f-3eec5131952c"]);
-const MIN_VIDEO_MONETIZATION_VIEWS = Number(process.env.DRIBADS_MIN_VIDEO_MONETIZATION_VIEWS || 1000);
-const MIN_VIDEO_MONETIZATION_CLICKS = Number(process.env.DRIBADS_MIN_VIDEO_MONETIZATION_CLICKS || 20);
-const MIN_VIDEO_MONETIZATION_ADS = Number(process.env.DRIBADS_MIN_VIDEO_MONETIZATION_ADS || 1);
-const ADS_SELECT_WITH_DESCRIPTION = "id, title, description, media_url, target_url, budget, status, created_at";
-const ADS_SELECT_NO_DESCRIPTION = "id, title, media_url, target_url, budget, status, created_at";
+const MIN_VIDEO_MONETIZATION_FOLLOWERS = Number(process.env.DRIBADS_MIN_VIDEO_MONETIZATION_FOLLOWERS || 10000);
+const MIN_VIDEO_MONETIZATION_VIEWS = Number(process.env.DRIBADS_MIN_VIDEO_MONETIZATION_VIEWS || 100000);
+const MIN_VIDEO_MONETIZATION_WATCH_MINUTES = Number(process.env.DRIBADS_MIN_VIDEO_MONETIZATION_WATCH_MINUTES || 10000);
+const ALLOWED_AD_PLACEMENTS = new Set(["pre_roll", "post_roll", "both"]);
+const DEFAULT_AD_PLACEMENT = "pre_roll";
+const DEFAULT_SKIP_AFTER_SECONDS = 5;
+const ADS_SELECT_WITH_DESCRIPTION =
+  "id, title, description, media_url, target_url, budget, status, ad_placement, skippable_enabled, skip_after_seconds, created_at";
+const ADS_SELECT_NO_DESCRIPTION =
+  "id, title, media_url, target_url, budget, status, ad_placement, skippable_enabled, skip_after_seconds, created_at";
 
 let schemaCache = {
   ok: false,
@@ -53,6 +59,19 @@ function isMissingOwnerColumnError(error) {
   return message.includes("owner_user_id") && message.includes("does not exist");
 }
 
+function isMissingPlacementColumnError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("ad_placement") && message.includes("does not exist");
+}
+
+function isMissingSkippableColumnsError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    (message.includes("skippable_enabled") && message.includes("does not exist")) ||
+    (message.includes("skip_after_seconds") && message.includes("does not exist"))
+  );
+}
+
 function isMissingTableError(error, tableName) {
   const message = String(error?.message || "").toLowerCase();
   return (
@@ -62,9 +81,16 @@ function isMissingTableError(error, tableName) {
 }
 
 function mapAdRow(row) {
+  const placement = ALLOWED_AD_PLACEMENTS.has(row?.ad_placement) ? row.ad_placement : DEFAULT_AD_PLACEMENT;
+  const skipAfterRaw = Number(row?.skip_after_seconds);
+  const skipAfterSeconds =
+    Number.isFinite(skipAfterRaw) && skipAfterRaw >= 0 ? Math.min(Math.floor(skipAfterRaw), 30) : DEFAULT_SKIP_AFTER_SECONDS;
   return {
     ...row,
     description: row?.description || "",
+    ad_placement: placement,
+    skippable_enabled: row?.skippable_enabled !== false,
+    skip_after_seconds: skipAfterSeconds,
   };
 }
 
@@ -91,6 +117,56 @@ function buildCountMap(rows) {
     const adId = row.ad_id;
     if (!adId) return acc;
     acc[adId] = (acc[adId] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function getBillableClickCpc() {
+  if (!Number.isFinite(DRIBADS_CLICK_PAYOUT_CPC) || DRIBADS_CLICK_PAYOUT_CPC <= 0) {
+    return Number.isFinite(ESTIMATED_CPC) && ESTIMATED_CPC > 0 ? ESTIMATED_CPC : 0.05;
+  }
+  return DRIBADS_CLICK_PAYOUT_CPC;
+}
+
+async function getAdEarningsMap(adIds, { ownerUserId, appId } = {}) {
+  if (!ownerUserId || !Array.isArray(adIds) || !adIds.length) return {};
+  const db = await getSchemaClient();
+  let query = db.from("ad_earnings_ledger").select("ad_id, amount").eq("owner_user_id", ownerUserId).in("ad_id", adIds);
+  if (appId) {
+    query = query.eq("app_id", appId);
+  }
+  const { data, error } = await query;
+  if (error) {
+    if (isMissingTableError(error, "ad_earnings_ledger")) return null;
+    throw error;
+  }
+  return (data || []).reduce((acc, row) => {
+    const adId = row?.ad_id;
+    if (!adId) return acc;
+    acc[adId] = roundMoney((acc[adId] || 0) + Number(row.amount || 0));
+    return acc;
+  }, {});
+}
+
+async function getDailyEarningsMap({ ownerUserId, appId, startIso } = {}) {
+  if (!ownerUserId || !startIso) return {};
+  const db = await getSchemaClient();
+  let query = db
+    .from("ad_earnings_ledger")
+    .select("created_at, amount")
+    .eq("owner_user_id", ownerUserId)
+    .gte("created_at", startIso);
+  if (appId) {
+    query = query.eq("app_id", appId);
+  }
+  const { data, error } = await query;
+  if (error) {
+    if (isMissingTableError(error, "ad_earnings_ledger")) return null;
+    throw error;
+  }
+  return (data || []).reduce((acc, row) => {
+    const key = toDateKey(new Date(row.created_at));
+    acc[key] = roundMoney((acc[key] || 0) + Number(row.amount || 0));
     return acc;
   }, {});
 }
@@ -458,7 +534,41 @@ async function getMonetizationBypassUserIds() {
   return ids;
 }
 
-async function buildVideoMonetizationEligibility({ appId, ownerUserId, features, dashboard }) {
+async function getPublisherEligibilityStats(ownerUserId) {
+  if (!ownerUserId) {
+    return {
+      followers_count: 0,
+      video_views_count: 0,
+      watch_minutes: 0,
+    };
+  }
+
+  const db = await getSchemaClient();
+  const { data, error } = await db
+    .from("publisher_eligibility_stats")
+    .select("followers_count, video_views_count, watch_minutes")
+    .eq("user_id", ownerUserId)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingTableError(error, "publisher_eligibility_stats")) {
+      return {
+        followers_count: 0,
+        video_views_count: 0,
+        watch_minutes: 0,
+      };
+    }
+    throw error;
+  }
+
+  return {
+    followers_count: Number(data?.followers_count || 0),
+    video_views_count: Number(data?.video_views_count || 0),
+    watch_minutes: Number(data?.watch_minutes || 0),
+  };
+}
+
+async function buildVideoMonetizationEligibility({ appId, ownerUserId, features }) {
   if (!ownerUserId) {
     return {
       bypass: false,
@@ -498,7 +608,7 @@ async function buildVideoMonetizationEligibility({ appId, ownerUserId, features,
         .maybeSingle()
     : Promise.resolve({ data: null, error: null });
 
-  const [profileRes, linkRes] = await Promise.all([profilePromise, linkPromise]);
+  const [profileRes, linkRes, stats] = await Promise.all([profilePromise, linkPromise, getPublisherEligibilityStats(ownerUserId)]);
 
   if (profileRes.error && !isMissingTableError(profileRes.error, "publisher_profiles")) {
     throw profileRes.error;
@@ -531,25 +641,25 @@ async function buildVideoMonetizationEligibility({ appId, ownerUserId, features,
       required: true,
     },
     {
+      key: "min_followers",
+      label: "Minimum followers",
+      passed: Number(stats?.followers_count || 0) >= MIN_VIDEO_MONETIZATION_FOLLOWERS,
+      current: Number(stats?.followers_count || 0),
+      required: MIN_VIDEO_MONETIZATION_FOLLOWERS,
+    },
+    {
       key: "min_views",
-      label: "Minimum views",
-      passed: Number(dashboard?.totalViews || 0) >= MIN_VIDEO_MONETIZATION_VIEWS,
-      current: Number(dashboard?.totalViews || 0),
+      label: "Minimum video views",
+      passed: Number(stats?.video_views_count || 0) >= MIN_VIDEO_MONETIZATION_VIEWS,
+      current: Number(stats?.video_views_count || 0),
       required: MIN_VIDEO_MONETIZATION_VIEWS,
     },
     {
-      key: "min_clicks",
-      label: "Minimum clicks",
-      passed: Number(dashboard?.totalClicks || 0) >= MIN_VIDEO_MONETIZATION_CLICKS,
-      current: Number(dashboard?.totalClicks || 0),
-      required: MIN_VIDEO_MONETIZATION_CLICKS,
-    },
-    {
-      key: "has_ad",
-      label: "At least one ad created",
-      passed: Number((dashboard?.ads || []).length) >= MIN_VIDEO_MONETIZATION_ADS,
-      current: Number((dashboard?.ads || []).length),
-      required: MIN_VIDEO_MONETIZATION_ADS,
+      key: "min_watch_minutes",
+      label: "Minimum watch minutes",
+      passed: Number(stats?.watch_minutes || 0) >= MIN_VIDEO_MONETIZATION_WATCH_MINUTES,
+      current: Number(stats?.watch_minutes || 0),
+      required: MIN_VIDEO_MONETIZATION_WATCH_MINUTES,
     },
   ];
 
@@ -559,9 +669,9 @@ async function buildVideoMonetizationEligibility({ appId, ownerUserId, features,
     reason: "RULE_BASED",
     checks,
     thresholds: {
+      min_followers: MIN_VIDEO_MONETIZATION_FOLLOWERS,
       min_views: MIN_VIDEO_MONETIZATION_VIEWS,
-      min_clicks: MIN_VIDEO_MONETIZATION_CLICKS,
-      min_ads: MIN_VIDEO_MONETIZATION_ADS,
+      min_watch_minutes: MIN_VIDEO_MONETIZATION_WATCH_MINUTES,
     },
   };
 }
@@ -654,6 +764,27 @@ export async function getMonetizationFeatures(appSlug, options = {}) {
   }
 }
 
+export async function isVideoOwnerEligibleForAds(options = {}) {
+  const ownerUserId = String(options?.ownerUserId || "").trim();
+  if (!ownerUserId) {
+    return { eligible: false, reason: "MISSING_VIDEO_OWNER_ID", app: null };
+  }
+
+  const app = await resolveAppContext({ appSlug: options?.appSlug, appKey: options?.appKey });
+  if (!app?.slug) {
+    return { eligible: false, reason: "APP_NOT_FOUND", app: null };
+  }
+
+  const monetization = await getMonetizationFeatures(app.slug, { ownerUserId });
+  const eligibility = monetization?.eligibility || {};
+  return {
+    eligible: Boolean(eligibility.eligible),
+    reason: eligibility.reason || "RULE_BASED",
+    app: monetization?.app || { slug: app.slug, name: app.name },
+    eligibility,
+  };
+}
+
 export async function getFirstAd() {
   await ensureDribadsSetup();
   const db = await getSchemaClient();
@@ -661,6 +792,7 @@ export async function getFirstAd() {
     .from("ads")
     .select(ADS_SELECT_WITH_DESCRIPTION)
     .eq("status", "active")
+    .gt("budget", 0)
     .order("created_at", { ascending: false })
     .limit(50);
 
@@ -675,6 +807,7 @@ export async function getFirstAd() {
     .from("ads")
     .select(ADS_SELECT_NO_DESCRIPTION)
     .eq("status", "active")
+    .gt("budget", 0)
     .order("created_at", { ascending: false })
     .limit(50);
   if (fallback.error) throw fallback.error;
@@ -683,25 +816,46 @@ export async function getFirstAd() {
   return clean[0] || mapped[0] || null;
 }
 
-export async function getDeliverableAd(strategy = "random") {
+export async function getDeliverableAd(strategy = "random", options = {}) {
   await ensureDribadsSetup();
   const db = await getSchemaClient();
-  const withDescription = await db
+  const placement = ALLOWED_AD_PLACEMENTS.has(String(options?.placement || "").trim().toLowerCase())
+    ? String(options.placement).trim().toLowerCase()
+    : null;
+  const placementFilterValues =
+    placement === "pre_roll"
+      ? ["pre_roll", "both"]
+      : placement === "post_roll"
+      ? ["post_roll", "both"]
+      : null;
+
+  let withDescriptionQuery = db
     .from("ads")
     .select(ADS_SELECT_WITH_DESCRIPTION)
     .eq("status", "active")
+    .gt("budget", 0)
     .order("created_at", { ascending: false })
     .limit(50);
 
+  if (placementFilterValues) {
+    withDescriptionQuery = withDescriptionQuery.in("ad_placement", placementFilterValues);
+  }
+  const withDescription = await withDescriptionQuery;
+
   let data = withDescription.data;
   let error = withDescription.error;
-  if (error && isMissingDescriptionError(error)) {
-    const fallback = await db
+  if (error && (isMissingDescriptionError(error) || isMissingPlacementColumnError(error) || isMissingSkippableColumnsError(error))) {
+    let fallbackQuery = db
       .from("ads")
       .select(ADS_SELECT_NO_DESCRIPTION)
       .eq("status", "active")
+      .gt("budget", 0)
       .order("created_at", { ascending: false })
       .limit(50);
+    if (placementFilterValues && !isMissingPlacementColumnError(error)) {
+      fallbackQuery = fallbackQuery.in("ad_placement", placementFilterValues);
+    }
+    const fallback = await fallbackQuery;
     data = fallback.data;
     error = fallback.error;
   }
@@ -732,6 +886,11 @@ export async function createAd(input, options = {}) {
     target_url: input.target_url,
     budget: input.budget,
     status: input.status && ALLOWED_STATUSES.has(input.status) ? input.status : "active",
+    ad_placement: ALLOWED_AD_PLACEMENTS.has(input.ad_placement) ? input.ad_placement : DEFAULT_AD_PLACEMENT,
+    skippable_enabled: input.skippable_enabled !== false,
+    skip_after_seconds: Number.isFinite(Number(input.skip_after_seconds))
+      ? Math.min(Math.max(Math.floor(Number(input.skip_after_seconds)), 0), 30)
+      : DEFAULT_SKIP_AFTER_SECONDS,
     owner_user_id: ownerUserId,
   };
 
@@ -746,6 +905,11 @@ export async function createAd(input, options = {}) {
     target_url: input.target_url,
     budget: input.budget,
     status: input.status && ALLOWED_STATUSES.has(input.status) ? input.status : "active",
+    ad_placement: ALLOWED_AD_PLACEMENTS.has(input.ad_placement) ? input.ad_placement : DEFAULT_AD_PLACEMENT,
+    skippable_enabled: input.skippable_enabled !== false,
+    skip_after_seconds: Number.isFinite(Number(input.skip_after_seconds))
+      ? Math.min(Math.max(Math.floor(Number(input.skip_after_seconds)), 0), 30)
+      : DEFAULT_SKIP_AFTER_SECONDS,
     owner_user_id: ownerUserId,
   };
   const fallback = await db.from("ads").insert(payloadFallback).select(ADS_SELECT_NO_DESCRIPTION).single();
@@ -787,6 +951,42 @@ export async function recordAdView(adId, context = {}) {
   return { ok: true, app: app ? { slug: app.slug, name: app.name } : null };
 }
 
+export async function recordAdSkip(adId, context = {}) {
+  await ensureDribadsSetup();
+  const db = await getSchemaClient();
+  const app = await resolveAppContext(context);
+  const payload = {
+    ad_id: adId,
+    app_id: app?.id || null,
+  };
+  const { error } = await db.from("ad_skips").insert(payload);
+  if (error) {
+    if (isMissingTableError(error, "ad_skips")) {
+      return { ok: true, app: app ? { slug: app.slug, name: app.name } : null, skipped: false };
+    }
+    throw error;
+  }
+  return { ok: true, app: app ? { slug: app.slug, name: app.name } : null, skipped: true };
+}
+
+export async function recordAdComplete(adId, context = {}) {
+  await ensureDribadsSetup();
+  const db = await getSchemaClient();
+  const app = await resolveAppContext(context);
+  const payload = {
+    ad_id: adId,
+    app_id: app?.id || null,
+  };
+  const { error } = await db.from("ad_completions").insert(payload);
+  if (error) {
+    if (isMissingTableError(error, "ad_completions")) {
+      return { ok: true, app: app ? { slug: app.slug, name: app.name } : null, completed: false };
+    }
+    throw error;
+  }
+  return { ok: true, app: app ? { slug: app.slug, name: app.name } : null, completed: true };
+}
+
 export async function recordAdClick(adId, context = {}) {
   await ensureDribadsSetup();
   const db = await getSchemaClient();
@@ -795,8 +995,61 @@ export async function recordAdClick(adId, context = {}) {
     ad_id: adId,
     app_id: app?.id || null,
   };
-  const { error } = await db.from("ad_clicks").insert(payload);
-  if (error) throw error;
+  const clickInsert = await db.from("ad_clicks").insert(payload).select("id, created_at").single();
+  if (clickInsert.error) throw clickInsert.error;
+
+  const clickId = clickInsert.data?.id || null;
+  const clickCreatedAt = clickInsert.data?.created_at || new Date().toISOString();
+  const clickCpc = Number(getBillableClickCpc().toFixed(4));
+
+  // Real earnings mode: charge advertiser budget on valid clicks and store immutable earning event.
+  // If schema is not migrated yet, click tracking still works and dashboard falls back to estimated CPC mode.
+  if (clickCpc > 0) {
+    const adRes = await db.from("ads").select("id, owner_user_id, budget, status").eq("id", adId).maybeSingle();
+    if (adRes.error && !isMissingOwnerColumnError(adRes.error)) {
+      throw adRes.error;
+    }
+
+    const adRow = adRes.data;
+    if (adRow && adRow.owner_user_id && adRow.status === "active") {
+      const currentBudget = Number(adRow.budget || 0);
+      if (currentBudget >= clickCpc) {
+        const nextBudgetRaw = currentBudget - clickCpc;
+        const nextBudget = roundMoney(nextBudgetRaw < 0 ? 0 : nextBudgetRaw);
+        const nextStatus = nextBudget <= 0 ? "paused" : "active";
+
+        const budgetUpdate = await db
+          .from("ads")
+          .update({ budget: nextBudget, status: nextStatus })
+          .eq("id", adId)
+          .eq("status", "active")
+          .eq("budget", adRow.budget)
+          .gte("budget", clickCpc)
+          .select("id")
+          .maybeSingle();
+
+        if (budgetUpdate.error && !isMissingOwnerColumnError(budgetUpdate.error)) {
+          throw budgetUpdate.error;
+        }
+
+        if (budgetUpdate.data) {
+          const earningPayload = {
+            ad_id: adId,
+            ad_click_id: clickId,
+            owner_user_id: adRow.owner_user_id,
+            app_id: app?.id || null,
+            amount: clickCpc,
+            created_at: clickCreatedAt,
+          };
+          const earningInsert = await db.from("ad_earnings_ledger").insert(earningPayload);
+          if (earningInsert.error && !isMissingTableError(earningInsert.error, "ad_earnings_ledger")) {
+            throw earningInsert.error;
+          }
+        }
+      }
+    }
+  }
+
   return { ok: true, app: app ? { slug: app.slug, name: app.name } : null };
 }
 
@@ -823,11 +1076,17 @@ async function getDashboardAds(appId = null, ownerUserId = null) {
 
   const viewMap = buildCountMap(viewRows);
   const clickMap = buildCountMap(clickRows);
+  const earningsMap = await getAdEarningsMap(adIds, { ownerUserId, appId });
+  const hasRealEarnings = earningsMap !== null;
 
   return ads.map((ad) => ({
     ...mapAdRow(ad),
     views: viewMap[ad.id] || 0,
     clicks: clickMap[ad.id] || 0,
+    usesEstimatedEarnings: !hasRealEarnings,
+    earnings: hasRealEarnings
+      ? roundMoney(earningsMap[ad.id] || 0)
+      : roundMoney((clickMap[ad.id] || 0) * ESTIMATED_CPC),
   }));
 }
 
@@ -843,16 +1102,22 @@ export async function getDashboardData(options = {}) {
 
   let totalViews = 0;
   let totalClicks = 0;
+  let totalBalance = 0;
   for (const ad of adsWithStats) {
     totalViews += Number(ad.views || 0);
     totalClicks += Number(ad.clicks || 0);
+    totalBalance += Number(ad.earnings || 0);
   }
+  const safeBalance = roundMoney(totalBalance);
+  const effectiveCpc = totalClicks > 0 ? Number((safeBalance / totalClicks).toFixed(4)) : getBillableClickCpc();
+  const isEstimatedBalance = adsWithStats.length > 0 && adsWithStats.every((ad) => ad.usesEstimatedEarnings === true);
 
   return {
     totalViews,
     totalClicks,
-    balance: Number((totalClicks * ESTIMATED_CPC).toFixed(2)),
-    estimatedCpc: ESTIMATED_CPC,
+    balance: safeBalance,
+    estimatedCpc: effectiveCpc,
+    isEstimatedBalance,
     ads: adsWithStats,
     app: app ? { slug: app.slug, name: app.name } : null,
   };
@@ -871,6 +1136,7 @@ export async function getAnalyticsData(days = 14, options = {}) {
   const buckets = buildDateBuckets(days);
   const start = new Date(buckets[0].date);
   start.setHours(0, 0, 0, 0);
+  const startIso = start.toISOString();
 
   let ownedAdIds = null;
   if (ownerUserId) {
@@ -889,8 +1155,8 @@ export async function getAnalyticsData(days = 14, options = {}) {
     }
   }
 
-  let viewsQuery = db.from("ad_views").select("created_at").gte("created_at", start.toISOString());
-  let clicksQuery = db.from("ad_clicks").select("created_at").gte("created_at", start.toISOString());
+  let viewsQuery = db.from("ad_views").select("created_at").gte("created_at", startIso);
+  let clicksQuery = db.from("ad_clicks").select("created_at").gte("created_at", startIso);
 
   if (ownedAdIds) {
     viewsQuery = viewsQuery.in("ad_id", ownedAdIds);
@@ -912,6 +1178,8 @@ export async function getAnalyticsData(days = 14, options = {}) {
 
   const viewMap = {};
   const clickMap = {};
+  const earningsMap = await getDailyEarningsMap({ ownerUserId, appId, startIso });
+  const hasRealDailyEarnings = earningsMap !== null;
 
   for (const row of views || []) {
     const key = toDateKey(new Date(row.created_at));
@@ -927,6 +1195,9 @@ export async function getAnalyticsData(days = 14, options = {}) {
     date: bucket.key,
     views: viewMap[bucket.key] || 0,
     clicks: clickMap[bucket.key] || 0,
+    earnings: hasRealDailyEarnings
+      ? roundMoney(earningsMap[bucket.key] || 0)
+      : roundMoney((clickMap[bucket.key] || 0) * ESTIMATED_CPC),
   }));
 }
 
@@ -1003,7 +1274,7 @@ export async function getPayoutsData(options = {}) {
     .reduce((sum, row) => sum + Number(row.amount || 0), 0);
 
   const totalEarned = Number(dashboard.balance || 0);
-  const availableToWithdraw = Math.max(0, totalEarned - totalPending);
+  const availableToWithdraw = Math.max(0, totalEarned - totalPending - totalPaid);
 
   return {
     app: { slug: app.slug, name: app.name },

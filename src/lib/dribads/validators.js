@@ -11,6 +11,7 @@
 }
 
 const ALLOWED_STATUSES = new Set(["active", "paused", "draft"]);
+const ALLOWED_AD_PLACEMENTS = new Set(["pre_roll", "post_roll", "both"]);
 
 export function validateAdInput(body) {
   const title = body?.title?.trim();
@@ -19,6 +20,9 @@ export function validateAdInput(body) {
   const targetUrlRaw = body?.target_url?.trim();
   const budget = Number(body?.budget);
   const statusRaw = body?.status?.trim();
+  const placementRaw = String(body?.ad_placement || body?.placement || "pre_roll").trim().toLowerCase();
+  const skippableRaw = body?.skippable_enabled;
+  const skipAfterRaw = Number(body?.skip_after_seconds);
 
   if (!title) return { error: "title is required" };
 
@@ -41,6 +45,9 @@ export function validateAdInput(body) {
   }
 
   const status = ALLOWED_STATUSES.has(statusRaw) ? statusRaw : "active";
+  const ad_placement = ALLOWED_AD_PLACEMENTS.has(placementRaw) ? placementRaw : "pre_roll";
+  const skippable_enabled = skippableRaw === undefined ? true : Boolean(skippableRaw);
+  const skip_after_seconds = Number.isFinite(skipAfterRaw) ? Math.min(Math.max(Math.floor(skipAfterRaw), 0), 30) : 5;
 
   return {
     data: {
@@ -50,6 +57,9 @@ export function validateAdInput(body) {
       target_url,
       budget: Number(budget.toFixed(2)),
       status,
+      ad_placement,
+      skippable_enabled,
+      skip_after_seconds,
     },
   };
 }
