@@ -33,7 +33,7 @@ export default function Navbar() {
         <div className="flex items-center gap-3">
           <Link
             href="/download"
-            className="hidden rounded-full bg-red-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-800 md:inline-flex"
+            className="hidden rounded-full bg-black px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-black/90 md:inline-flex"
           >
             حمّل التطبيق
           </Link>
@@ -67,7 +67,7 @@ export default function Navbar() {
             <Link
               href="/download"
               onClick={() => setIsOpen(false)}
-              className="mt-2 inline-flex items-center justify-center rounded-2xl bg-red-700 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-800"
+              className="mt-2 inline-flex items-center justify-center rounded-2xl bg-black px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-black/90"
             >
               حمّل التطبيق
             </Link>

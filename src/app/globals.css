@@ -7,9 +7,12 @@
   --text: #0f172a;
   --muted: #475569;
   --line: #dbe5f2;
-  --brand: #0b63f6;
-  --brand-strong: #0847ac;
+  --brand: #111827;
+  --brand-strong: #000000;
   --danger: #ef4444;
+  --mint-50: #ecfdf3;
+  --mint-100: #dcfce7;
+  --mint-200: #bbf7d0;
 }
 
 * {
@@ -23,7 +26,7 @@ body {
 }
 
 body.dribads-body {
-  background: radial-gradient(circle at 10% -10%, #dce9ff 0%, #f4f7fb 45%, #f4f7fb 100%);
+  background: radial-gradient(circle at 10% -10%, #dcfce7 0%, #f4f7fb 42%, #f4f7fb 100%);
   color: var(--text);
   font-family: var(--font-body), system-ui, sans-serif;
   text-align: start;
@@ -87,7 +90,7 @@ a {
 }
 
 .dribads-locale-fixed a.is-active {
-  background: color-mix(in srgb, var(--brand) 14%, #fff 86%);
+  background: color-mix(in srgb, var(--mint-100) 72%, #fff 28%);
   color: var(--brand-strong);
 }
 
@@ -101,7 +104,7 @@ a {
   border: 1px solid var(--line);
   border-radius: 999px;
   overflow: hidden;
-  background: color-mix(in srgb, #ffffff 88%, #e8f0ff 12%);
+  background: color-mix(in srgb, #ffffff 86%, var(--mint-100) 14%);
   box-shadow: 0 8px 20px rgb(0 0 0 / 0.08);
 }
 
@@ -175,7 +178,7 @@ a {
   gap: 0.4rem;
   padding: 0.3rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-soft) 85%, #fff 15%);
+  background: color-mix(in srgb, var(--mint-50) 48%, #fff 52%);
   border: 1px solid var(--line);
   overflow-x: auto;
   overflow-y: hidden;
@@ -295,7 +298,7 @@ a {
 }
 
 .dribads-btn-ghost {
-  background: color-mix(in srgb, var(--surface-soft) 70%, #fff 30%);
+  background: color-mix(in srgb, var(--mint-50) 45%, #fff 55%);
   color: var(--text);
   border: 1px solid var(--line);
 }
@@ -461,7 +464,7 @@ a {
 }
 
 .dribads-card {
-  background: color-mix(in srgb, var(--surface) 93%, #f8fbff 7%);
+  background: color-mix(in srgb, var(--surface) 93%, var(--mint-50) 7%);
   border: 1px solid var(--line);
   border-radius: 1.1rem;
   padding: 1.15rem;
@@ -489,7 +492,7 @@ a {
   font-size: 0.76rem;
   letter-spacing: 0.06em;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--brand) 15%, #fff 85%);
+  background: color-mix(in srgb, var(--mint-100) 70%, #fff 30%);
   color: var(--brand-strong);
   padding: 0.2rem 0.55rem;
 }
@@ -1447,4 +1450,43 @@ html[dir="rtl"] .dribads-kicker {
   .dribads-auth-cta .dribads-btn-primary {
     display: inline-flex;
   }
+}
+
+
+/* Theme overrides: black primary + light green accent */
+.text-red-600,
+.text-red-700,
+.text-red-800 {
+  color: #111827 !important;
+}
+
+.hover\:text-red-800:hover {
+  color: #000000 !important;
+}
+
+.bg-red-50,
+.bg-rose-50 {
+  background-color: var(--mint-50) !important;
+}
+
+.border-red-200,
+.border-rose-200 {
+  border-color: var(--mint-200) !important;
+}
+
+.bg-red-600,
+.bg-red-700,
+.bg-rose-600,
+.bg-rose-700 {
+  background-color: #000000 !important;
+  background-image: none !important;
+  color: #ffffff !important;
+}
+
+.hover\:bg-red-700:hover,
+.hover\:bg-red-800:hover,
+.hover\:bg-rose-700:hover,
+.hover\:bg-rose-800:hover {
+  background-color: #111827 !important;
+  background-image: none !important;
 }
